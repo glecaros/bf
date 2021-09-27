@@ -37,7 +37,7 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
     info!("Input file: {}", input.to_string_lossy());
 
     let working_directory = args
-        .value_of("working_directory")
+        .value_of("working-directory")
         .map(PathBuf::from)
         .map(Ok)
         .unwrap_or(current_dir())
@@ -80,11 +80,29 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
     let dry_run = args.is_present("dry_run");
     info!("Is dry run: {}", dry_run);
 
+    let source_prefix = args.value_of("source-prefix").map(PathBuf::from);
+    if let Some(source_prefix) = &source_prefix {
+        info!(
+            "Source prefix specified: {}",
+            source_prefix.to_string_lossy()
+        )
+    }
+
+    let destination_prefix = args.value_of("destination-prefix").map(PathBuf::from);
+    if let Some(destination_prefix) = &destination_prefix {
+        info!(
+            "Destination prefix specified: {}",
+            destination_prefix.to_string_lossy()
+        )
+    }
+
     Ok(Runtime {
         input: input,
         working_directory: working_directory,
         variables: variables,
         dry_run: dry_run,
+        source_prefix: source_prefix,
+        destination_prefix: destination_prefix,
     })
 }
 
@@ -100,9 +118,21 @@ fn execute() -> Result<(), Error> {
                 .required(true),
         )
         .arg(
-            Arg::with_name("working_directory")
+            Arg::with_name("working-directory")
                 .short("w")
                 .long("working-dir")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("source-prefix")
+                .short("I")
+                .long("input-prefix")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("destination-prefix")
+                .short("D")
+                .long("destination-prefix")
                 .takes_value(true),
         )
         .arg(

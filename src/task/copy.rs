@@ -77,10 +77,20 @@ impl Item {
     }
 
     fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
-        info!("Copy {} -> {}", self.source.to_string_lossy(), self.destination.to_string_lossy());
+        let source = if let Some(prefix) = &runtime.source_prefix {
+            prefix.join(&self.source)
+        } else {
+            self.source.clone()
+        };
+        let destination = if let Some(prefix) = &runtime.destination_prefix {
+            prefix.join(&self.destination)
+        } else {
+            self.destination.clone()
+        };
+        info!("Copy {} -> {}", source.to_string_lossy(), destination.to_string_lossy());
         if evaluate_condition(&self.condition, &runtime)? {
             if !runtime.dry_run {
-                commands::copy(&self.source, &self.destination)?;
+                commands::copy(&source, &destination)?;
             }
         } else {
             info!("  Condition failed, ignoring...")
