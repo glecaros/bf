@@ -37,7 +37,7 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
     info!("Input file: {}", input.to_string_lossy());
 
     let working_directory = args
-        .value_of("working_directory")
+        .value_of("working-directory")
         .map(PathBuf::from)
         .map(Ok)
         .unwrap_or(current_dir())
@@ -80,11 +80,23 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
     let dry_run = args.is_present("dry_run");
     info!("Is dry run: {}", dry_run);
 
+    let source_base = args.value_of("source-base").map(PathBuf::from);
+    if let Some(source_base) = &source_base {
+        info!("Src base specified: {}", source_base.to_string_lossy())
+    }
+
+    let destination_base = args.value_of("destination-base").map(PathBuf::from);
+    if let Some(destination_base) = &destination_base {
+        info!("Dst base specified: {}", destination_base.to_string_lossy())
+    }
+
     Ok(Runtime {
         input: input,
         working_directory: working_directory,
         variables: variables,
         dry_run: dry_run,
+        source_base: source_base,
+        destination_base: destination_base,
     })
 }
 
@@ -100,9 +112,21 @@ fn execute() -> Result<(), Error> {
                 .required(true),
         )
         .arg(
-            Arg::with_name("working_directory")
+            Arg::with_name("working-directory")
                 .short("w")
                 .long("working-dir")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("source-base")
+                .short("I")
+                .long("input-base")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("destination-base")
+                .short("D")
+                .long("destination-base")
                 .takes_value(true),
         )
         .arg(
