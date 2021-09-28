@@ -77,12 +77,12 @@ impl Item {
     }
 
     fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
-        let source = if let Some(prefix) = &runtime.source_prefix {
+        let source = if let Some(prefix) = &runtime.source_base {
             prefix.join(&self.source)
         } else {
             self.source.clone()
         };
-        let destination = if let Some(prefix) = &runtime.destination_prefix {
+        let destination = if let Some(prefix) = &runtime.destination_base {
             prefix.join(&self.destination)
         } else {
             self.destination.clone()

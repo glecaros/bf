@@ -80,20 +80,14 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
     let dry_run = args.is_present("dry_run");
     info!("Is dry run: {}", dry_run);
 
-    let source_prefix = args.value_of("source-prefix").map(PathBuf::from);
-    if let Some(source_prefix) = &source_prefix {
-        info!(
-            "Source prefix specified: {}",
-            source_prefix.to_string_lossy()
-        )
+    let source_base = args.value_of("source-base").map(PathBuf::from);
+    if let Some(source_base) = &source_base {
+        info!("Src base specified: {}", source_base.to_string_lossy())
     }
 
-    let destination_prefix = args.value_of("destination-prefix").map(PathBuf::from);
-    if let Some(destination_prefix) = &destination_prefix {
-        info!(
-            "Destination prefix specified: {}",
-            destination_prefix.to_string_lossy()
-        )
+    let destination_base = args.value_of("destination-base").map(PathBuf::from);
+    if let Some(destination_base) = &destination_base {
+        info!("Dst base specified: {}", destination_base.to_string_lossy())
     }
 
     Ok(Runtime {
@@ -101,8 +95,8 @@ fn parse_arguments(args: ArgMatches) -> Result<Runtime, Error> {
         working_directory: working_directory,
         variables: variables,
         dry_run: dry_run,
-        source_prefix: source_prefix,
-        destination_prefix: destination_prefix,
+        source_base: source_base,
+        destination_base: destination_base,
     })
 }
 
@@ -124,15 +118,15 @@ fn execute() -> Result<(), Error> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("source-prefix")
+            Arg::with_name("source-base")
                 .short("I")
-                .long("input-prefix")
+                .long("input-base")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("destination-prefix")
+            Arg::with_name("destination-base")
                 .short("D")
-                .long("destination-prefix")
+                .long("destination-base")
                 .takes_value(true),
         )
         .arg(
