@@ -31,6 +31,7 @@ pub fn interpolate(
     Ok(output)
 }
 
+#[cfg(test)]
 mod test {
     use std::collections::HashMap;
 
