@@ -88,7 +88,7 @@ impl Item {
             self.destination.clone()
         };
         info!("Copy {} -> {}", source.to_string_lossy(), destination.to_string_lossy());
-        if evaluate_condition(&self.condition, &runtime)? {
+        if evaluate_condition(self.condition.as_deref(), &runtime)? {
             if !runtime.dry_run {
                 commands::copy(&source, &destination)?;
             }
@@ -131,6 +131,10 @@ impl CopyTask {
             item.execute(&runtime)?;
         }
         Ok(())
+    }
+
+    pub fn item_count(&self) -> usize {
+        self.items.len()
     }
 }
 
