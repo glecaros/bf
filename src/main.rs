@@ -3,6 +3,7 @@ mod error;
 mod runtime;
 mod task;
 mod util;
+mod interpolation;
 
 use std::{
     collections::HashMap,
