@@ -1,7 +1,6 @@
 mod copy;
 
 use std::{
-    convert::TryFrom,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -14,6 +13,7 @@ use crate::{error::Error, internal_error, runtime::Runtime, util::WorkingDirGuar
 
 pub use copy::CopyTask;
 
+#[derive(Debug)]
 pub enum Task {
     Copy(CopyTask),
 }
@@ -26,20 +26,20 @@ impl Task {
     }
 }
 
-/* TODO: Explore if the following 2 functions can be implemented with a single macro */
-fn combine_conditions(left: Option<&str>, right: Option<&str>) -> Option<String> {
-    if let Some(left) = left {
-        if let Some(right) = right {
-            Some(format!("({}) && ({})", &left, &right))
-        } else {
-            Some(String::from(left))
-        }
-    } else {
-        right.map(String::from)
-    }
-}
+// /* TODO: Explore if the following 2 functions can be implemented with a single macro */
+// fn combine_conditions(left: Option<&str>, right: Option<&str>) -> Option<String> {
+//     if let Some(left) = left {
+//         if let Some(right) = right {
+//             Some(format!("({}) && ({})", &left, &right))
+//         } else {
+//             Some(String::from(left))
+//         }
+//     } else {
+//         right.map(String::from)
+//     }
+// }
 
-fn combine_paths(prefix: Option<&Path>, suffix: Option<&Path>) -> Option<PathBuf> {
+fn combine_paths(prefix: Option<&PathBuf>, suffix: Option<&PathBuf>) -> Option<PathBuf> {
     if let Some(prefix) = prefix {
         let mut prefix = prefix.to_string_lossy().to_string();
         if !prefix.ends_with(std::path::MAIN_SEPARATOR) {
@@ -78,24 +78,14 @@ fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool
 }
 
 fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
-    let _guard = WorkingDirGuard::new(&runtime.working_directory)?;
     let xml_elements: Element = input.parse()?;
     xml_elements
         .children()
         .map(|task| {
             let task_name = task.name();
-            let condition = task.attr("condition");
-            let condition = evaluate_condition(condition, &runtime)?;
-            if condition {
-                match task_name {
-                    "copy" => {
-                        let task = CopyTask::try_from(task)?;
-                        Ok(Some(Task::Copy(task)))
-                    }
-                    _ => Err(internal_error!("Invalid task {}", task_name)),
-                }
-            } else {
-                Ok(None)
+            match task_name {
+                "copy" => Ok(CopyTask::parse(runtime, task)?.map(Task::Copy)),
+                _ => Err(internal_error!("Invalid task {}", task_name)),
             }
         })
         .filter_map(|x| match x {
@@ -111,6 +101,7 @@ pub fn parse_input_file(runtime: &Runtime) -> Result<Vec<Task>, Error> {
         file.read_to_string(&mut contents)?;
         Ok(contents)
     })?;
+    let _guard = WorkingDirGuard::new(&runtime.working_directory)?;
     parse_input(runtime, &input)
 }
 
@@ -156,12 +147,40 @@ mod test {
         assert!(result); 
     }
 
+    #[test]
+    fn evaluate_condition_test_single_variable_not_present() {
+        let runtime = new_runtime();
+        const CONDITION: &str = "var == 'value'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(!result);
+    }
 
     #[test]
-    fn single_task_failed_condition_variable_present() {
+    fn evaluate_condition_test_single_variable_wrong() {
+        let mut runtime = new_runtime();
+        runtime.variables.insert(String::from("var"), String::from("wrong"));
+        const CONDITION: &str = "var == 'value'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(!result); 
+    }
+
+    #[test]
+    fn evaluate_condition_test_not_bool() {
+        let runtime = new_runtime();
+        const CONDITION: &str = "3 + 1'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Err(_)));
+    }
+ 
+    #[test]
+    fn single_task_failed_condition() {
         const INPUT: &str = r#"
         <?xml version="1.0" encoding="UTF-8"?>
-        <tasks xmlsns="https://github.com/glecaros/bf">
+        <tasks xmlns="https://github.com/glecaros/bf">
             <copy condition="var == 'value'">
                 <item>item.file</item>
             </copy>
@@ -178,17 +197,37 @@ mod test {
     }
 
     #[test]
+    fn single_task_fulfilled_condition() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy condition="var == 'value'">
+                <item>item.file</item>
+            </copy>
+        </tasks>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+    }
+
+    #[test]
     fn single_task_with_single_item() {
         const INPUT: &str = r#"
         <?xml version="1.0" encoding="UTF-8"?>
-        <tasks xmlsns="https://github.com/glecaros/bf">
+        <tasks xmlns="https://github.com/glecaros/bf">
             <copy>
                 <item>item.file</item>
             </copy>
         </tasks>
         "#;
         let runtime = new_runtime();
-        let tasks = super::parse_input(&runtime, INPUT);
+        let tasks = parse_input(&runtime, INPUT);
         assert!(matches!(tasks, Ok(_)));
         let tasks = tasks.unwrap();
         assert_eq!(tasks.len(), 1);
@@ -198,24 +237,89 @@ mod test {
         assert_eq!(task.item_count(), 1);
     }
 
-    // fn single_task_with_multiple_items() {
-    //     const input: &str = r#"
-    //     <?xml version="1.0" encoding="UTF-8"?>
-    //     <tasks xmlsns="https://github.com/glecaros/bf">
-    //         <copy>
-    //             <group source="srcdir" destination="outdir">
-    //             <group destination="lib">
-    //                 <item>lib1.so</item>
-    //                 <group destination="extra">
-    //                     <item>folder_a/liba.so</item>
-    //                 </group>
+    #[test]
+    fn single_task_with_multiple_items() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy>
+                <item>file1.ext</item>
+                <item>file2.ext</item>
+            </copy>
+        </tasks>
+        "#;
+        let runtime = new_runtime();
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+        let task = tasks.first().unwrap();
+        assert!(matches!(task, Task::Copy(_)));
+        let Task::Copy(task) = task;
+        assert_eq!(task.item_count(), 2);   
+    }
+
+    #[test]
+    fn single_task_with_group() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy>
+                <group source="srcdir" destination="outdir">
+                    <item>file1.ext</item>
+                </group>
+                <item>file2.ext</item>
+            </copy>
+        </tasks>
+        "#;
+        let runtime = new_runtime();
+        let tasks = parse_input(&runtime, INPUT);
+        println!("{:?}", tasks);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+        let task = tasks.first().unwrap();
+        assert!(matches!(task, Task::Copy(_)));
+        let Task::Copy(task) = task;
+        assert_eq!(task.item_count(), 2);
+    }
+
+    #[test]
+    fn single_task_with_nested_groups() {}
+
+    #[test]
+    fn single_task_with_constrained_group() {}
+
+    #[test]
+    fn single_task_with_constrained_nested_groups() {}
+
+    #[test]
+    fn single_task_with_interpolation_all_enabled() {}
+
+    #[test]
+    fn single_task_with_interpolation_all_enabled_missing_variable() {}
+
+    #[test]
+    fn single_task_with_interpolation_some_enabled() {}
+
+    #[test]
+    fn single_task_with_interpolation_some_enabled_missing_variable() {}
+    // const INPUT: &str = r#"
+    // <?xml version="1.0" encoding="UTF-8"?>
+    // <tasks xmlns="https://github.com/glecaros/bf">
+    //     <copy>
+    //         <group source="srcdir" destination="outdir">
+    //         <group destination="lib">
+    //             <item>lib1.so</item>
+    //             <group destination="extra">
+    //                 <item>folder_a/liba.so</item>
     //             </group>
-    //             <group source="doc" destination="docs">
-    //                 <item destination="README.md">my_doc.md</item>
-    //             </group>
-    //             </group>
-    //         </copy>
-    //     </tasks>
-    //     "#;
-    // }
+    //         </group>
+    //         <group source="doc" destination="docs">
+    //             <item destination="README.md">my_doc.md</item>
+    //         </group>
+    //         </group>
+    //     </copy>
+    // </tasks>
+    // "#;
 }
