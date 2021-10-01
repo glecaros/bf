@@ -1,12 +1,8 @@
 mod copy;
 
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::{fs::File, io::Read, path::PathBuf};
 
-use log::debug;
+use log::{debug, info};
 use minidom::Element;
 
 use crate::{error::Error, internal_error, runtime::Runtime, util::WorkingDirGuard};
@@ -25,19 +21,6 @@ impl Task {
         }
     }
 }
-
-// /* TODO: Explore if the following 2 functions can be implemented with a single macro */
-// fn combine_conditions(left: Option<&str>, right: Option<&str>) -> Option<String> {
-//     if let Some(left) = left {
-//         if let Some(right) = right {
-//             Some(format!("({}) && ({})", &left, &right))
-//         } else {
-//             Some(String::from(left))
-//         }
-//     } else {
-//         right.map(String::from)
-//     }
-// }
 
 fn combine_paths(prefix: Option<&PathBuf>, suffix: Option<&PathBuf>) -> Option<PathBuf> {
     if let Some(prefix) = prefix {
@@ -84,7 +67,13 @@ fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
         .map(|task| {
             let task_name = task.name();
             match task_name {
-                "copy" => Ok(CopyTask::parse(runtime, task)?.map(Task::Copy)),
+                "copy" => {
+                    let task = CopyTask::parse(runtime, task)?;
+                    if let Some(task) = &task {
+                        info!("Found copy task with {} items based on conditions.", task.item_count());
+                    }
+                    Ok(task.map(Task::Copy))
+                },
                 _ => Err(internal_error!("Invalid task {}", task_name)),
             }
         })
@@ -139,12 +128,14 @@ mod test {
     #[test]
     fn evaluate_condition_test_single_variable_present() {
         let mut runtime = new_runtime();
-        runtime.variables.insert(String::from("var"), String::from("value"));
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
         const CONDITION: &str = "var == 'value'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Ok(_)));
         let result = result.unwrap();
-        assert!(result); 
+        assert!(result);
     }
 
     #[test]
@@ -160,12 +151,14 @@ mod test {
     #[test]
     fn evaluate_condition_test_single_variable_wrong() {
         let mut runtime = new_runtime();
-        runtime.variables.insert(String::from("var"), String::from("wrong"));
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("wrong"));
         const CONDITION: &str = "var == 'value'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Ok(_)));
         let result = result.unwrap();
-        assert!(!result); 
+        assert!(!result);
     }
 
     #[test]
@@ -175,7 +168,7 @@ mod test {
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Err(_)));
     }
- 
+
     #[test]
     fn single_task_failed_condition() {
         const INPUT: &str = r#"
@@ -256,7 +249,7 @@ mod test {
         let task = tasks.first().unwrap();
         assert!(matches!(task, Task::Copy(_)));
         let Task::Copy(task) = task;
-        assert_eq!(task.item_count(), 2);   
+        assert_eq!(task.item_count(), 2);
     }
 
     #[test]
@@ -274,7 +267,6 @@ mod test {
         "#;
         let runtime = new_runtime();
         let tasks = parse_input(&runtime, INPUT);
-        println!("{:?}", tasks);
         assert!(matches!(tasks, Ok(_)));
         let tasks = tasks.unwrap();
         assert_eq!(tasks.len(), 1);
@@ -283,43 +275,4 @@ mod test {
         let Task::Copy(task) = task;
         assert_eq!(task.item_count(), 2);
     }
-
-    #[test]
-    fn single_task_with_nested_groups() {}
-
-    #[test]
-    fn single_task_with_constrained_group() {}
-
-    #[test]
-    fn single_task_with_constrained_nested_groups() {}
-
-    #[test]
-    fn single_task_with_interpolation_all_enabled() {}
-
-    #[test]
-    fn single_task_with_interpolation_all_enabled_missing_variable() {}
-
-    #[test]
-    fn single_task_with_interpolation_some_enabled() {}
-
-    #[test]
-    fn single_task_with_interpolation_some_enabled_missing_variable() {}
-    // const INPUT: &str = r#"
-    // <?xml version="1.0" encoding="UTF-8"?>
-    // <tasks xmlns="https://github.com/glecaros/bf">
-    //     <copy>
-    //         <group source="srcdir" destination="outdir">
-    //         <group destination="lib">
-    //             <item>lib1.so</item>
-    //             <group destination="extra">
-    //                 <item>folder_a/liba.so</item>
-    //             </group>
-    //         </group>
-    //         <group source="doc" destination="docs">
-    //             <item destination="README.md">my_doc.md</item>
-    //         </group>
-    //         </group>
-    //     </copy>
-    // </tasks>
-    // "#;
 }
