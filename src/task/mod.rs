@@ -1,14 +1,15 @@
 mod copy;
 
-use std::{convert::TryFrom, fs::File, io::Read, path::{Path, PathBuf}};
+use std::{fs::File, io::Read, path::PathBuf};
 
-use log::debug;
+use log::{debug, info};
 use minidom::Element;
 
 use crate::{error::Error, internal_error, runtime::Runtime, util::WorkingDirGuard};
 
 pub use copy::CopyTask;
 
+#[derive(Debug)]
 pub enum Task {
     Copy(CopyTask),
 }
@@ -21,20 +22,7 @@ impl Task {
     }
 }
 
-/* TODO: Explore if the following 2 functions can be implemented with a single macro */
-fn combine_conditions(left: Option<&str>, right: Option<&str>) -> Option<String> {
-    if let Some(left) = left {
-        if let Some(right) = right {
-            Some(format!("({}) && ({})", &left, &right))
-        } else {
-            Some(String::from(left))
-        }
-    } else {
-        right.map(String::from)
-    }
-}
-
-fn combine_paths(prefix: Option<&Path>, suffix: Option<&Path>) -> Option<PathBuf> {
+fn combine_paths(prefix: Option<&PathBuf>, suffix: Option<&PathBuf>) -> Option<PathBuf> {
     if let Some(prefix) = prefix {
         let mut prefix = prefix.to_string_lossy().to_string();
         if !prefix.ends_with(std::path::MAIN_SEPARATOR) {
@@ -51,20 +39,49 @@ fn combine_paths(prefix: Option<&Path>, suffix: Option<&Path>) -> Option<PathBuf
     }
 }
 
-fn evaluate_condition(condition: &Option<String>, runtime: &Runtime) -> Result<bool, Error> {
+fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
     use eval::Expr;
     if let Some(condition) = condition {
         debug!("Evaluating condition {}", &condition);
-        let expr = &runtime.variables.iter().fold(Expr::new(condition), |expr, (name, value)| {
-            expr.value(name, value)
-        });
+        let expr = &runtime
+            .variables
+            .iter()
+            .fold(Expr::new(condition), |expr, (name, value)| {
+                expr.value(name, value)
+            });
         let value = expr.exec().map_err(|e| e.to_string())?;
-        value.as_bool().ok_or(internal_error!("Expression {} does not evaluate to bool", &condition))
+        value.as_bool().ok_or(internal_error!(
+            "Expression {} does not evaluate to bool",
+            &condition
+        ))
     } else {
         debug!("Empty condition");
         Ok(true)
     }
+}
 
+fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
+    let xml_elements: Element = input.parse()?;
+    xml_elements
+        .children()
+        .map(|task| {
+            let task_name = task.name();
+            match task_name {
+                "copy" => {
+                    let task = CopyTask::parse(runtime, task)?;
+                    if let Some(task) = &task {
+                        info!("Found copy task with {} items based on conditions.", task.item_count());
+                    }
+                    Ok(task.map(Task::Copy))
+                },
+                _ => Err(internal_error!("Invalid task {}", task_name)),
+            }
+        })
+        .filter_map(|x| match x {
+            Ok(v) => v.map(|task| Ok(task)),
+            Err(e) => Some(Err(e)),
+        })
+        .collect()
 }
 
 pub fn parse_input_file(runtime: &Runtime) -> Result<Vec<Task>, Error> {
@@ -74,18 +91,188 @@ pub fn parse_input_file(runtime: &Runtime) -> Result<Vec<Task>, Error> {
         Ok(contents)
     })?;
     let _guard = WorkingDirGuard::new(&runtime.working_directory)?;
-    let xml_elements: Element = input.parse()?;
-    xml_elements
-        .children()
-        .map(|task| {
-            let task_name = task.name();
-            match task_name {
-                "copy" => {
-                    let task = CopyTask::try_from(task)?;
-                    Ok(Task::Copy(task))
-                }
-                _ => Err(internal_error!("Invalid task {}", task_name)),
-            }
-        })
-        .collect()
+    parse_input(runtime, &input)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashMap, path::PathBuf};
+
+    use crate::{
+        runtime::Runtime,
+        task::{parse_input, Task},
+    };
+
+    use super::evaluate_condition;
+
+    fn new_runtime() -> Runtime {
+        Runtime {
+            input: PathBuf::new(),
+            working_directory: PathBuf::new(),
+            variables: HashMap::new(),
+            dry_run: true,
+            source_base: None,
+            destination_base: None,
+        }
+    }
+
+    #[test]
+    fn evaluate_condition_no_condition() {
+        let runtime = new_runtime();
+        let result = evaluate_condition(None, &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn evaluate_condition_test_single_variable_present() {
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        const CONDITION: &str = "var == 'value'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn evaluate_condition_test_single_variable_not_present() {
+        let runtime = new_runtime();
+        const CONDITION: &str = "var == 'value'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn evaluate_condition_test_single_variable_wrong() {
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("wrong"));
+        const CONDITION: &str = "var == 'value'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Ok(_)));
+        let result = result.unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn evaluate_condition_test_not_bool() {
+        let runtime = new_runtime();
+        const CONDITION: &str = "3 + 1'";
+        let result = evaluate_condition(Some(CONDITION), &runtime);
+        assert!(matches!(result, Err(_)));
+    }
+
+    #[test]
+    fn single_task_failed_condition() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy condition="var == 'value'">
+                <item>item.file</item>
+            </copy>
+        </tasks>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("wrong_value"));
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn single_task_fulfilled_condition() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy condition="var == 'value'">
+                <item>item.file</item>
+            </copy>
+        </tasks>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+    }
+
+    #[test]
+    fn single_task_with_single_item() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy>
+                <item>item.file</item>
+            </copy>
+        </tasks>
+        "#;
+        let runtime = new_runtime();
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+        let task = tasks.first().unwrap();
+        assert!(matches!(task, Task::Copy(_)));
+        let Task::Copy(task) = task;
+        assert_eq!(task.item_count(), 1);
+    }
+
+    #[test]
+    fn single_task_with_multiple_items() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy>
+                <item>file1.ext</item>
+                <item>file2.ext</item>
+            </copy>
+        </tasks>
+        "#;
+        let runtime = new_runtime();
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+        let task = tasks.first().unwrap();
+        assert!(matches!(task, Task::Copy(_)));
+        let Task::Copy(task) = task;
+        assert_eq!(task.item_count(), 2);
+    }
+
+    #[test]
+    fn single_task_with_group() {
+        const INPUT: &str = r#"
+        <?xml version="1.0" encoding="UTF-8"?>
+        <tasks xmlns="https://github.com/glecaros/bf">
+            <copy>
+                <group source="srcdir" destination="outdir">
+                    <item>file1.ext</item>
+                </group>
+                <item>file2.ext</item>
+            </copy>
+        </tasks>
+        "#;
+        let runtime = new_runtime();
+        let tasks = parse_input(&runtime, INPUT);
+        assert!(matches!(tasks, Ok(_)));
+        let tasks = tasks.unwrap();
+        assert_eq!(tasks.len(), 1);
+        let task = tasks.first().unwrap();
+        assert!(matches!(task, Task::Copy(_)));
+        let Task::Copy(task) = task;
+        assert_eq!(task.item_count(), 2);
+    }
 }

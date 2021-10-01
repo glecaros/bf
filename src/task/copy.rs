@@ -1,79 +1,49 @@
-use std::{convert::TryFrom, path::PathBuf};
+use std::path::PathBuf;
 
-use log::{error, info};
+use log::info;
 use minidom::Element;
 
-use crate::{commands, error::Error, internal_error, runtime::Runtime, task::evaluate_condition};
+use crate::{
+    commands, error::Error, internal_error, interpolation::interpolate, runtime::Runtime,
+    task::evaluate_condition,
+};
 
-use super::{combine_conditions, combine_paths};
+use super::combine_paths;
 
 struct Group {
-    condition: Option<String>,
     source_prefix: Option<PathBuf>,
     destination_prefix: Option<PathBuf>,
 }
 
 impl Group {
-    fn apply_group(&mut self, group: &Option<Group>) {
-        if let Some(group) = &group {
-            self.condition =
-                combine_conditions(group.condition.as_deref(), self.condition.as_deref());
-            self.source_prefix = combine_paths(
-                group.source_prefix.as_deref(),
-                self.source_prefix.as_deref(),
-            );
-            self.destination_prefix = combine_paths(
-                group.destination_prefix.as_deref(),
-                self.destination_prefix.as_deref(),
-            );
-        }
-    }
-}
-
-impl From<&Element> for Group {
-    fn from(value: &Element) -> Self {
-        let condition = value.attr("condition").map(String::from);
-        let source = value.attr("source").map(PathBuf::from);
-        let destination = value.attr("destination").map(PathBuf::from);
+    fn create(source: Option<&str>, destination: Option<&str>, parent: Option<&Group>) -> Group {
+        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
+        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
+        let source_suffix = source.map(PathBuf::from);
+        let destination_suffix = destination.map(PathBuf::from);
         Group {
-            condition: condition,
-            source_prefix: source,
-            destination_prefix: destination,
+            source_prefix: combine_paths(source_prefix, source_suffix.as_ref()),
+            destination_prefix: combine_paths(destination_prefix, destination_suffix.as_ref()),
         }
     }
 }
 
 #[derive(Debug)]
 struct Item {
-    condition: Option<String>,
     source: PathBuf,
     destination: PathBuf,
 }
 
 impl Item {
-    fn apply_group(&mut self, group: &Option<Group>) -> Result<(), Error> {
-        if let Some(group) = group {
-            self.condition =
-                combine_conditions(group.condition.as_deref(), self.condition.as_deref());
-            self.source =
-                combine_paths(group.source_prefix.as_deref(), Some(&self.source)).unwrap();
-            let file_name = if self.source.is_file() {
-                let file_name = self.source.file_name().ok_or(internal_error!("Unexpected"))?;
-                Ok(PathBuf::from(file_name))
-            } else {
-                error!("File {} does not exist or is not a regular file", self.source.to_string_lossy());
-                Err(internal_error!("Invalid file"))
-            }?;
-            let destination = combine_paths(group.destination_prefix.as_deref(), Some(&self.destination))
-                .unwrap_or(file_name.clone()).to_string_lossy().to_string();
-            self.destination = if destination.ends_with(std::path::MAIN_SEPARATOR) {
-                PathBuf::from(destination).join(file_name)
-            } else {
-                PathBuf::from(destination)
-            }
-
+    fn create(source: &str, destination: &str, parent: Option<&Group>) -> Item {
+        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
+        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
+        let source_suffix = Some(PathBuf::from(source));
+        let destination_suffix = Some(PathBuf::from(destination));
+        Item {
+            source: combine_paths(source_prefix, source_suffix.as_ref()).unwrap(),
+            destination: combine_paths(destination_prefix, destination_suffix.as_ref()).unwrap(),
         }
-        Ok(())
     }
 
     fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
@@ -87,41 +57,20 @@ impl Item {
         } else {
             self.destination.clone()
         };
-        info!("Copy {} -> {}", source.to_string_lossy(), destination.to_string_lossy());
-        if evaluate_condition(&self.condition, &runtime)? {
-            if !runtime.dry_run {
-                commands::copy(&source, &destination)?;
-            }
-        } else {
-            info!("  Condition failed, ignoring...")
+        info!(
+            "Copy {} -> {}",
+            source.to_string_lossy(),
+            destination.to_string_lossy()
+        );
+        if !runtime.dry_run {
+            commands::copy(&source, &destination)?;
         }
         Ok(())
     }
 }
 
-impl TryFrom<&Element> for Item {
-    type Error = Error;
-    fn try_from(value: &Element) -> Result<Self, Self::Error> {
-        let condition = value.attr("condition").map(String::from);
-        let source = if value.text().is_empty() {
-            error!("Copy task item is empty.");
-            Err(internal_error!("Empty item (copy)"))
-        } else {
-            Ok(value.text())
-        }.map(PathBuf::from)?;
-        let file_name = source.file_name().ok_or(internal_error!("Unexpected"))?;
-        let destination = value.attr("destination").map(PathBuf::from).unwrap_or(PathBuf::from(file_name));
-        Ok(Item {
-            condition: condition,
-            source: source,
-            destination: destination,
-        })
-    }
-}
-
 #[derive(Debug)]
 pub struct CopyTask {
-    condition: Option<String>,
     items: Vec<Item>,
 }
 
@@ -132,40 +81,698 @@ impl CopyTask {
         }
         Ok(())
     }
+
+    pub fn item_count(&self) -> usize {
+        self.items.len()
+    }
 }
 
-fn parse_items(parent: &Element, group: Option<Group>) -> Result<Vec<Item>, Error> {
-    let mut items = Vec::new();
-    for item in parent.children() {
-        match item.name() {
-            "item" => {
-                let mut item = Item::try_from(item)?;
-                item.apply_group(&group)?;
-                items.push(item);
-            }
-            "group" => {
-                let mut inner_group = Group::from(item);
-                inner_group.apply_group(&group);
-                let mut inner_items = parse_items(item, Some(inner_group))?;
-                items.append(&mut inner_items);
-            }
-            _ => {
-                return Err(internal_error!("Invalid element {}", item.name()));
+const ATTR_SOURCE: &str = "source";
+const ATTR_DESTINATION: &str = "destination";
+const ATTR_CONDITION: &str = "condition";
+
+fn parse_item(
+    runtime: &Runtime,
+    element: &Element,
+    parent: Option<&Group>,
+) -> Result<Option<Item>, Error> {
+    let condition = element.attr(ATTR_CONDITION);
+    let condition = evaluate_condition(condition, runtime)?;
+    let source = element.text();
+    let source = interpolate(&source, &runtime.variables)?;
+    let destination = element.attr(ATTR_DESTINATION).unwrap_or(&source);
+    let destination = interpolate(destination, &runtime.variables)?;
+    if condition {
+        Ok(Some(Item::create(&source, &destination, parent)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn parse_items(
+    runtime: &Runtime,
+    parent: &Element,
+    group: Option<&Group>,
+) -> Result<Option<Vec<Item>>, Error> {
+    let condition = parent.attr(ATTR_CONDITION);
+    let condition = evaluate_condition(condition, runtime)?;
+    if condition {
+        let source = match parent.attr(ATTR_SOURCE) {
+            Some(source) => Some(interpolate(source, &runtime.variables)?),
+            None => None,
+        };
+        let destination = match parent.attr(ATTR_DESTINATION) {
+            Some(destination) => Some(interpolate(destination, &runtime.variables)?),
+            None => None,
+        };
+        let group = Group::create(source.as_deref(), destination.as_deref(), group);
+        let mut items = Vec::new();
+        for item in parent.children() {
+            match item.name() {
+                "item" => {
+                    let item = parse_item(runtime, item, Some(&group))?;
+                    if let Some(item) = item {
+                        items.push(item);
+                    }
+                }
+                "group" => {
+                    let inner_items = parse_items(runtime, item, Some(&group))?;
+                    if let Some(mut inner_items) = inner_items {
+                        items.append(&mut inner_items);
+                    }
+                }
+                _ => {
+                    return Err(internal_error!("Invalid element {}", item.name()));
+                }
             }
         }
+        Ok(Some(items))
+    } else {
+        Ok(None)
     }
-    Ok(items)
 }
 
-impl TryFrom<&Element> for CopyTask {
-    type Error = Error;
+impl CopyTask {
+    pub fn parse(runtime: &Runtime, base_element: &Element) -> Result<Option<CopyTask>, Error> {
+        let items =
+            parse_items(runtime, base_element, None)?.map(|items| CopyTask { items: items });
+        Ok(items)
+    }
+}
 
-    fn try_from(element: &Element) -> Result<Self, Self::Error> {
-        let condition = element.attr("condition").map(String::from);
-        let items = parse_items(element, None)?;
-        Ok(CopyTask {
-            condition: condition,
-            items: items,
-        })
+#[cfg(test)]
+mod test {
+    use std::{collections::HashMap, path::PathBuf, str::FromStr};
+
+    use minidom::Element;
+
+    use crate::runtime::Runtime;
+
+    use super::parse_items;
+
+    fn new_runtime() -> Runtime {
+        Runtime {
+            input: PathBuf::new(),
+            working_directory: PathBuf::new(),
+            variables: HashMap::new(),
+            dry_run: true,
+            source_base: None,
+            destination_base: None,
+        }
+    }
+
+    #[test]
+    fn parse_items_single_item() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let item = items.first().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_item_with_rename() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item destination="newfile.ext">file1.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let item = items.first().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/newfile.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_item_with_fulfilled_condition_outer() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst" condition="var == 'value'">
+            <item>file1.ext</item>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let item = items.first().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_item_with_unfulfilled_condition_outer() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst" condition="var == 'value'">
+            <item>file1.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(None)));
+    }
+
+    #[test]
+    fn parse_items_with_fulfilled_condition_inner() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item condition="var == 'value'">file1.ext</item>
+            <item>file2.ext</item>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 2);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_with_unfulfilled_condition_inner() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item condition="var == 'value'">file1.ext</item>
+            <item>file2.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_group() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir">
+                <item>file2.ext</item>
+            </group>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 2);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_group_with_fulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir" condition="var == 'val'">
+                <item>file2.ext</item>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("val"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 2);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_single_group_with_unfulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir" condition="var == 'val'">
+                <item>file2.ext</item>
+            </group>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+    }
+
+    #[test]
+    fn parse_items_nested_groups() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir">
+                <item>file2.ext</item>
+                <group source="i" destination="d">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 3);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/i/file3.ext"));
+        assert_eq!(
+            item.destination,
+            PathBuf::from("dst/output_dir/d/file3.ext")
+        );
+    }
+
+    #[test]
+    fn parse_items_nested_groups_with_fulfilled_inner_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir">
+                <item>file2.ext</item>
+                <group source="i" destination="d" condition="var == 'val'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("val"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 3);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/i/file3.ext"));
+        assert_eq!(
+            item.destination,
+            PathBuf::from("dst/output_dir/d/file3.ext")
+        );
+    }
+
+    #[test]
+    fn parse_items_nested_groups_with_unfulfilled_inner_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir">
+                <item>file2.ext</item>
+                <group source="i" destination="d" condition="var == 'val'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 2);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_nested_groups_with_fulfilled_outer_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir" condition="var == 'val'">
+                <item>file2.ext</item>
+                <group source="i" destination="d">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("val"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 3);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/output_dir/file2.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/i/file3.ext"));
+        assert_eq!(
+            item.destination,
+            PathBuf::from("dst/output_dir/d/file3.ext")
+        );
+    }
+
+    #[test]
+    fn parse_items_nested_groups_with_unfulfilled_outer_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>file1.ext</item>
+            <group source="input_dir" destination="output_dir" condition="var == 'val'">
+                <item>file2.ext</item>
+                <group source="i" destination="d">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 1);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/file1.ext"));
+    }
+
+    #[test]
+    fn parse_items_interpolation() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        runtime
+            .variables
+            .insert(String::from("other_input"), String::from("secret"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 4);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/my_file.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_file.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/some_name.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/file2.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/secret/file3.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/d/file3.ext"));
+    }
+
+    #[test]
+    fn parse_items_interpolation_with_fulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d" condition="var == 'value'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        runtime
+            .variables
+            .insert(String::from("other_input"), String::from("secret"));
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 4);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/my_file.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_file.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/some_name.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/file2.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/secret/file3.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/d/file3.ext"));
+    }
+
+    #[test]
+    fn parse_items_interpolation_with_unfulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d" condition="val == 'value'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        runtime
+            .variables
+            .insert(String::from("other_input"), String::from("secret"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 3);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/my_file.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_file.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/some_name.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_interpolation_with_missing_variable() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Err(_)));
+    }
+
+    #[test]
+    fn parse_items_interpolation_with_missing_variable_fulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d" condition="var == 'value'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        runtime
+            .variables
+            .insert(String::from("var"), String::from("value"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Err(_)));
+    }
+
+    #[test]
+    fn parse_items_interpolation_with_missing_variable_unfulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+            <item destination="{new_name}.ext">file1.ext</item>
+            <group source="input_dir" destination="{dir}">
+                <item>file2.ext</item>
+                <group source="{other_input}" destination="d" condition="var == 'value'">
+                    <item>file3.ext</item>
+                </group>
+            </group>
+        </copy>
+        "#;
+        let mut runtime = new_runtime();
+        runtime
+            .variables
+            .insert(String::from("name"), String::from("my_file"));
+        runtime
+            .variables
+            .insert(String::from("new_name"), String::from("some_name"));
+        runtime
+            .variables
+            .insert(String::from("dir"), String::from("my_dir"));
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert_eq!(items.len(), 3);
+        let mut items = items.iter();
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/my_file.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_file.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/file1.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/some_name.ext"));
+        let item = items.next().unwrap();
+        assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
+        assert_eq!(item.destination, PathBuf::from("dst/my_dir/file2.ext"));
     }
 }
