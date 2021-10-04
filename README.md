@@ -26,7 +26,7 @@ We can accomplish this by declaring a our manifest:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<tasks xmlsns="https://github.com/glecaros/bf">
+<tasks xmlns="https://github.com/glecaros/bf">
   <copy>
     <group source="srcdir" destination="outdir">
       <group destination="lib">

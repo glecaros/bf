@@ -98,11 +98,11 @@ fn parse_item(
 ) -> Result<Option<Item>, Error> {
     let condition = element.attr(ATTR_CONDITION);
     let condition = evaluate_condition(condition, runtime)?;
-    let source = element.text();
-    let source = interpolate(&source, &runtime.variables)?;
-    let destination = element.attr(ATTR_DESTINATION).unwrap_or(&source);
-    let destination = interpolate(destination, &runtime.variables)?;
     if condition {
+        let source = element.text();
+        let source = interpolate(&source, &runtime.variables)?;
+        let destination = element.attr(ATTR_DESTINATION).unwrap_or(&source);
+        let destination = interpolate(destination, &runtime.variables)?;
         Ok(Some(Item::create(&source, &destination, parent)))
     } else {
         Ok(None)
@@ -774,5 +774,33 @@ mod test {
         let item = items.next().unwrap();
         assert_eq!(item.source, PathBuf::from("src/input_dir/file2.ext"));
         assert_eq!(item.destination, PathBuf::from("dst/my_dir/file2.ext"));
+    }
+
+    #[test]
+    fn parse_items_interpolation_in_item_with_missing_variable() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item>{name}.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Err(_)));
+    }
+
+    #[test]
+    fn parse_items_interpolation_in_item_with_missing_variable_and_unfulfilled_condition() {
+        const INPUT: &str = r#"
+        <copy xmlns="https://github.com/glecaros/bf" source="src" destination="dst">
+            <item condition="var == 'value'">{name}.ext</item>
+        </copy>
+        "#;
+        let runtime = new_runtime();
+        let element = Element::from_str(INPUT).unwrap();
+        let items = parse_items(&runtime, &element, None);
+        assert!(matches!(items, Ok(Some(_))));
+        let items = items.unwrap().unwrap();
+        assert!(items.is_empty());
     }
 }
