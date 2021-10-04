@@ -1,0 +1,12 @@
+name: strip
+command:
+  linux: strip [-o $destination ] $source
+  windows: strip.exe [-o $destination ] $source
+element:
+  tag: strip
+  value:
+    name: source
+    required: true
+  attributes:
+    - name: destination
+      required: false
