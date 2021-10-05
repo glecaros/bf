@@ -1,114 +1,23 @@
-
-
-
-
-// #[derive(PartialEq, Eq, Hash)]
-// enum Dependency {
-//     StdLib(&'static str),
-//     External(&'static str),
-//     Internal(&'static str)
-// }
-
-// impl Dependency {
-//     fn new_std(dependecy: &'static str) -> Dependency {
-//         Dependency::StdLib(dependecy)
-//     }
-// }
-
-// struct Dependencies {
-//     dependencies: HashSet<Dependency>
-// }
-
-// impl Dependencies {
-//     fn new() -> Dependencies {
-//         Dependencies {
-//             dependencies: HashSet::new()
-//         }
-//     }
-
-//     fn add(&mut self, dependency: Dependency) {
-//         self.dependencies.insert(dependency);
-//     }
-// }
-
-// struct PartNode<'a> {
-//     value: &'static str,
-//     children: Vec<&'a PartNode<'a>>
-// }
-
-// impl<'a> PartNode<'a> {
-//     fn new(value: &'static str) -> PartNode<'a> {
-//         PartNode{ value: value, children: Vec::new() }
-//     }
-
-//     fn add_children(&mut self, children: &[&'static str]) {
-//         self.children.iter().find(|node| node.value == children[0])
-//         self.roots.iter().find(|node )
-//     }
-// }
-
-// struct MultiTree<'a> {
-//     roots: Vec<PartNode<'a>>
-// }
-
-// impl<'a> MultiTree<'a> {
-//     fn add_parts(&mut self, parts: Vec<&'a str>) {
-//         if parts.len() > 0 {
-//             let root = parts[0];
-//             let found = self.roots.iter().find(|node| {
-//                 root == node.value
-//             });
-//             let a = &parts[1..];
-//             match found {
-//                 Some(found) => todo!(),
-//                 None => todo!(),
-//             }
-//         }
-//     }
-// }
-
-// impl ToString for Dependencies {
-//     fn to_string(&self) -> String {
-//         let std_lib = Vec::new();
-//         for dependency in self.dependencies {
-//             match dependency {
-//                 Dependency::StdLib(dep) => {
-//                     let parts: Vec<&str> = dep.split("::").collect();
-//                     std_lib.push(parts)
-//                 },
-//                 Dependency::External(_) => todo!(),
-//                 Dependency::Internal(_) => todo!(),
-//             };
-//         }
-//         let asfd = "asdf::asdf";
-//         let mut a = asdf.split("::");
-
-//         String::from("asdf")
-//         // let a = self.dependencies.iter().filter_map(|dep| {
-//         //     if let Dependency::StdLib(lib) = dep {
-//         //         Some(lib)
-//         //     } else {
-//         //         None
-//         //     }
-//         // }).();
-//     }
-// }
+use std::io::{Result, Write};
 
 #[derive(Debug)]
 struct MultiTree {
     value: Option<&'static str>,
-    chidren: Vec<MultiTree> 
+    children: Vec<MultiTree>,
 }
 
 impl MultiTree {
     fn new() -> MultiTree {
-        MultiTree{ value: None, chidren: Vec::new() }
+        MultiTree {
+            value: None,
+            children: Vec::new(),
+        }
     }
 
-    fn  add(&mut self, path: &[&'static str]) {
+    fn add(&mut self, path: &[&'static str]) {
         if path.len() > 0 {
             let first = path[0];
-            let found = self.chidren.iter_mut().find(|child| {
+            let found = self.children.iter_mut().find(|child| {
                 if let Some(value) = child.value {
                     value == first
                 } else {
@@ -122,10 +31,64 @@ impl MultiTree {
                 let mut new_child = MultiTree::new();
                 new_child.value = Some(first);
                 new_child.add(tail);
-                self.chidren.push(new_child);
-
+                self.children.push(new_child);
             }
         }
+    }
+
+    fn to_string(&self) -> String {
+        if let Some(value) = self.value {
+            let mut out = String::new();
+            out += value;
+            out += &match self.children.len() {
+                0 => String::new(),
+                1 => format!("::{}", self.children[0].to_string()),
+                _ => {
+                    let mut inner = String::new();
+                    inner += "::{";
+                    inner += &self
+                        .children
+                        .iter()
+                        .map(|child| child.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    inner += "}";
+                    inner
+                }
+            };
+            out
+        } else {
+            self.children
+                .iter()
+                .map(|child| child.to_string())
+                .collect::<Vec<String>>()
+                .join("\n")
+        }
+    }
+}
+
+struct DependencyTracker {
+    tree: MultiTree,
+}
+
+impl DependencyTracker {
+    pub fn new() -> DependencyTracker {
+        DependencyTracker {
+            tree: MultiTree::new(),
+        }
+    }
+
+    pub fn track(&mut self, dependency: &'static str) {
+        let parts: Vec<&'static str> = dependency.split("::").collect();
+        self.tree.add(&parts);
+    }
+
+    pub fn write<T: Write>(&self, indentation_level: usize, writer: &mut T) -> Result<()> {
+        let indentation = indentation_level * 4;
+        for child in &self.tree.children {
+            writeln!(writer, "{:indent$}use {}", child.to_string(), indent = indentation)?;
+        }
+        Ok(())
     }
 }
 
@@ -133,10 +96,8 @@ impl MultiTree {
 mod test {
     use super::MultiTree;
 
-    // use crate::Dependencies;
-
     fn find_entry_in_children<'a>(value: &str, entry: &'a MultiTree) -> Option<&'a MultiTree> {
-        entry.chidren.iter().find(|entry| -> bool {
+        entry.children.iter().find(|entry| -> bool {
             match entry.value {
                 Some(contained) => contained == value,
                 None => false,
@@ -153,29 +114,52 @@ mod test {
         tree.add(&["std", "path", "Path"]);
         tree.add(&["std", "path", "PathBuf"]);
         assert!(matches!(tree.value, None));
-        assert_eq!(tree.chidren.len(), 1);
-        let std_entry = tree.chidren.first().unwrap();
+        assert_eq!(tree.children.len(), 1);
+        let std_entry = tree.children.first().unwrap();
         assert!(matches!(std_entry.value, Some(value) if value == "std"));
-        assert_eq!(std_entry.chidren.len(), 3);
+        assert_eq!(std_entry.children.len(), 3);
         let fs_entry = find_entry_in_children("fs", std_entry);
-        assert!(matches!(fs_entry, Some(entry) if entry.chidren.len() == 1));
+        assert!(matches!(fs_entry, Some(entry) if entry.children.len() == 1));
         let file_entry = find_entry_in_children("File", fs_entry.unwrap());
-        assert!(matches!(file_entry, Some(entry) if entry.chidren.is_empty()));
+        assert!(matches!(file_entry, Some(entry) if entry.children.is_empty()));
         let io_entry = find_entry_in_children("io", std_entry);
-        assert!(matches!(io_entry, Some(entry) if entry.chidren.len() == 2));
+        assert!(matches!(io_entry, Some(entry) if entry.children.len() == 2));
         let read_entry = find_entry_in_children("Read", io_entry.unwrap());
-        assert!(matches!(read_entry, Some(entry) if entry.chidren.is_empty()));
+        assert!(matches!(read_entry, Some(entry) if entry.children.is_empty()));
         let write_entry = find_entry_in_children("Write", io_entry.unwrap());
-        assert!(matches!(write_entry, Some(entry) if entry.chidren.is_empty()));
+        assert!(matches!(write_entry, Some(entry) if entry.children.is_empty()));
         let path_entry = find_entry_in_children("path", std_entry);
-        assert!(matches!(path_entry, Some(entry) if entry.chidren.len() == 2));
-        println!("{:?}", tree);
-        // const EXPECTED: &str = "use std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}};";
-        // let dependencies = Dependencies {
-        //     dependencies: vec!
-        // }
+        assert!(matches!(path_entry, Some(entry) if entry.children.len() == 2));
+        let path_struct_entry = find_entry_in_children("Path", path_entry.unwrap());
+        assert!(matches!(path_struct_entry, Some(entry) if entry.children.is_empty()));
+        let pathbuf_entry = find_entry_in_children("PathBuf", path_entry.unwrap());
+        assert!(matches!(pathbuf_entry, Some(entry) if entry.children.is_empty()));
+    }
 
+    #[test]
+    fn multi_tree_should_serialize_correctly() {
+        let mut tree = MultiTree::new();
+        tree.add(&["std", "fs", "File"]);
+        tree.add(&["std", "io", "Read"]);
+        tree.add(&["std", "io", "Write"]);
+        tree.add(&["std", "path", "Path"]);
+        tree.add(&["std", "path", "PathBuf"]);
+        let serialized = tree.to_string();
+        assert_eq!(
+            serialized,
+            "std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}"
+        );
+    }
+
+    #[test]
+    fn multi_tree_should_serialize_correctly_multiline() {
+        let mut tree = MultiTree::new();
+        tree.add(&["log", "error"]);
+        tree.add(&["log", "info"]);
+        tree.add(&["minidom", "Element"]);
+        let serialized = tree.to_string();
+        let (first, second) = serialized.split_once("\n").unwrap();
+        assert_eq!(first, "log::{error, info}");
+        assert_eq!(second, "minidom::Element");
     }
 }
-
-
