@@ -8,25 +8,7 @@ use crate::{
     task::evaluate_condition,
 };
 
-use super::combine_paths;
-
-struct Group {
-    source_prefix: Option<PathBuf>,
-    destination_prefix: Option<PathBuf>,
-}
-
-impl Group {
-    fn create(source: Option<&str>, destination: Option<&str>, parent: Option<&Group>) -> Group {
-        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
-        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
-        let source_suffix = source.map(PathBuf::from);
-        let destination_suffix = destination.map(PathBuf::from);
-        Group {
-            source_prefix: combine_paths(source_prefix, source_suffix.as_ref()),
-            destination_prefix: combine_paths(destination_prefix, destination_suffix.as_ref()),
-        }
-    }
-}
+use super::{Group, Task, combine_paths};
 
 #[derive(Debug)]
 struct Item {
@@ -47,16 +29,8 @@ impl Item {
     }
 
     fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
-        let source = if let Some(prefix) = &runtime.source_base {
-            prefix.join(&self.source)
-        } else {
-            self.source.clone()
-        };
-        let destination = if let Some(prefix) = &runtime.destination_base {
-            prefix.join(&self.destination)
-        } else {
-            self.destination.clone()
-        };
+        let source = runtime.resolve_source(&self.source);
+        let destination = runtime.resolve_destination(&self.destination);
         info!(
             "Copy {} -> {}",
             source.to_string_lossy(),
@@ -74,16 +48,20 @@ pub struct CopyTask {
     items: Vec<Item>,
 }
 
-impl CopyTask {
-    pub fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
+impl Task for CopyTask {
+    fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
         for item in &self.items {
             item.execute(&runtime)?;
         }
         Ok(())
     }
 
-    pub fn item_count(&self) -> usize {
+    fn item_count(&self) -> usize {
         self.items.len()
+    }
+
+    fn get_name(&self) -> &'static str {
+        "copy"
     }
 }
 

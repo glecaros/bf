@@ -1,4 +1,5 @@
 mod copy;
+mod plugins;
 
 use std::{fs::File, io::Read, path::PathBuf};
 
@@ -9,18 +10,44 @@ use crate::{error::Error, internal_error, runtime::Runtime, util::WorkingDirGuar
 
 pub use copy::CopyTask;
 
-#[derive(Debug)]
-pub enum Task {
-    Copy(CopyTask),
+use self::plugins::handle_plugin_tasks;
+
+pub trait Task {
+    fn execute(&self, runtime: &Runtime) -> Result<(), Error>;
+
+    fn item_count(&self) -> usize;
+
+    fn get_name(&self) -> &'static str;
 }
 
-impl Task {
-    pub fn execute(&self, runtime: &Runtime) -> Result<(), Error> {
-        match self {
-            Task::Copy(copy_task) => copy_task.execute(runtime),
+pub trait AsTask {
+    fn as_task(self) -> Box<dyn Task>;
+}
+
+impl<T: Task + 'static> AsTask for T {
+    fn as_task(self) -> Box<dyn Task> {
+        Box::new(self) as Box<dyn Task>
+    }
+}
+
+struct Group {
+    source_prefix: Option<PathBuf>,
+    destination_prefix: Option<PathBuf>,
+}
+
+impl Group {
+    fn create(source: Option<&str>, destination: Option<&str>, parent: Option<&Group>) -> Group {
+        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
+        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
+        let source_suffix = source.map(PathBuf::from);
+        let destination_suffix = destination.map(PathBuf::from);
+        Group {
+            source_prefix: combine_paths(source_prefix, source_suffix.as_ref()),
+            destination_prefix: combine_paths(destination_prefix, destination_suffix.as_ref()),
         }
     }
 }
+
 
 fn combine_paths(prefix: Option<&PathBuf>, suffix: Option<&PathBuf>) -> Option<PathBuf> {
     if let Some(prefix) = prefix {
@@ -60,7 +87,7 @@ fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool
     }
 }
 
-fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
+fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Box<dyn Task>>, Error> {
     let xml_elements: Element = input.parse()?;
     xml_elements
         .children()
@@ -68,13 +95,13 @@ fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
             let task_name = task.name();
             match task_name {
                 "copy" => {
-                    let task = CopyTask::parse(runtime, task)?;
+                    let task = CopyTask::parse(runtime, task)?.map(|task| task.as_task());
                     if let Some(task) = &task {
                         info!("Found copy task with {} items based on conditions.", task.item_count());
                     }
-                    Ok(task.map(Task::Copy))
+                    Ok(task.map(Box::from))
                 },
-                _ => Err(internal_error!("Invalid task {}", task_name)),
+                _ => Ok(handle_plugin_tasks(runtime, task)?),
             }
         })
         .filter_map(|x| match x {
@@ -84,7 +111,7 @@ fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
         .collect()
 }
 
-pub fn parse_input_file(runtime: &Runtime) -> Result<Vec<Task>, Error> {
+pub fn parse_input_file(runtime: &Runtime) -> Result<Vec<Box<dyn Task>>, Error> {
     let input = File::open(&runtime.input).and_then(|mut file| {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
@@ -100,7 +127,7 @@ mod test {
 
     use crate::{
         runtime::Runtime,
-        task::{parse_input, Task},
+        task::{parse_input},
     };
 
     use super::evaluate_condition;
@@ -225,8 +252,7 @@ mod test {
         let tasks = tasks.unwrap();
         assert_eq!(tasks.len(), 1);
         let task = tasks.first().unwrap();
-        assert!(matches!(task, Task::Copy(_)));
-        let Task::Copy(task) = task;
+        assert_eq!(task.get_name(), "copy");
         assert_eq!(task.item_count(), 1);
     }
 
@@ -247,8 +273,7 @@ mod test {
         let tasks = tasks.unwrap();
         assert_eq!(tasks.len(), 1);
         let task = tasks.first().unwrap();
-        assert!(matches!(task, Task::Copy(_)));
-        let Task::Copy(task) = task;
+        assert_eq!(task.get_name(), "copy");
         assert_eq!(task.item_count(), 2);
     }
 
@@ -271,8 +296,7 @@ mod test {
         let tasks = tasks.unwrap();
         assert_eq!(tasks.len(), 1);
         let task = tasks.first().unwrap();
-        assert!(matches!(task, Task::Copy(_)));
-        let Task::Copy(task) = task;
+        assert_eq!(task.get_name(), "copy");
         assert_eq!(task.item_count(), 2);
     }
 }
