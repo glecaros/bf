@@ -67,7 +67,7 @@ impl MultiTree {
     }
 }
 
-struct DependencyTracker {
+pub struct DependencyTracker {
     tree: MultiTree,
 }
 

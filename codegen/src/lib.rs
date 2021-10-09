@@ -1,4 +1,5 @@
 mod dependency_tracker;
+mod module;
 
 use std::{collections::HashSet, env, fs::{self, File}, io::{Error, ErrorKind, Result, Write}, path::{Path, PathBuf}};
 
