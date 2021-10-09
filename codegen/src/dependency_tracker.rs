@@ -32,6 +32,7 @@ impl MultiTree {
                 new_child.value = Some(first);
                 new_child.add(tail);
                 self.children.push(new_child);
+                self.children.sort_by(|a, b| a.value.unwrap().cmp(b.value.unwrap()))
             }
         }
     }
@@ -86,7 +87,7 @@ impl DependencyTracker {
     pub fn write<T: Write>(&self, indentation_level: usize, writer: &mut T) -> Result<()> {
         let indentation = indentation_level * 4;
         for child in &self.tree.children {
-            writeln!(writer, "{:indent$}use {}", child.to_string(), indent = indentation)?;
+            writeln!(writer, "{:indent$}use {};", " ", child.to_string(), indent = indentation)?;
         }
         Ok(())
     }
@@ -147,7 +148,7 @@ mod test {
         let serialized = tree.to_string();
         assert_eq!(
             serialized,
-            "std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}"
+            "std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}}"
         );
     }
 

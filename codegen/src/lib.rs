@@ -1,44 +1,10 @@
 mod dependency_tracker;
 mod module;
+mod command;
 
 use std::{collections::HashSet, env, fs::{self, File}, io::{Error, ErrorKind, Result, Write}, path::{Path, PathBuf}};
 
-use convert_case::{Case, Casing};
-use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum ParameterType {
-    Path
-}
-
-#[derive(Debug, Deserialize)]
-struct ParameterDescriptor {
-    name: String,
-    #[serde(rename = "type")]
-    parameter_type: ParameterType,
-    required: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct CommandDescriptor {
-    linux: String,
-    windows: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ElementDescriptor {
-    tag: String,
-    value: ParameterDescriptor,
-    attributes: Vec<ParameterDescriptor>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PluginDescriptor {
-    name: String,
-    command: CommandDescriptor,
-    element: ElementDescriptor,
-}
 
 struct FileWriter {
     file: File,

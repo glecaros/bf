@@ -2,7 +2,7 @@ use std::io::{Result, Write};
 
 use crate::dependency_tracker::DependencyTracker;
 
-struct Module {
+pub struct Module {
     dependencies: DependencyTracker,
     code: Vec<String>,
 }
@@ -26,8 +26,44 @@ impl Module {
         let indentation = indentation_level * 4;
         self.dependencies.write(indentation_level, writer)?;
         for line in &self.code {
-            writeln!(writer, "{:indent$}use {}", line, indent = indentation)?;
+            writeln!(writer, "{:indent$}{}", " ", line, indent = indentation)?;
         }
         Ok(())
+    }
+}
+
+#[macro_export]
+macro_rules! line {
+    ($mod:ident, $l:expr) => {
+        $mod.add_line($l, &vec![])
+    };
+    ($mod:expr, $l:expr => $($dep:literal),+) => {
+        $mod.add_line($l, &vec![$($dep),+])
+    };
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::Module;
+
+    #[test]
+    fn output_should_match_input_plus_use_stmt() {
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut module = Module::new();
+        line!(module, "struct A {");
+        line!(module, "    foo: PathBuf," => "std::path::PathBuf");
+        line!(module, "    bar: Option<PathBuf>," => "std::path::PathBuf");
+        line!(module, "}");
+        module.write(1, &mut buffer).unwrap();
+        let output = String::from_utf8(buffer).unwrap();
+        const EXPECTED: &str = 
+r#"    use std::path::PathBuf;
+    struct A {
+        foo: PathBuf,
+        bar: Option<PathBuf>,
+    }
+"#; 
+        assert_eq!(EXPECTED, output);
     }
 }
