@@ -27,15 +27,15 @@ use std::{collections::HashSet, env, fs::{self, File}, io::{Error, ErrorKind, Re
 //     }
 // }
 
-// const MODULE_NAME: &str = "plugins";
+const MODULE_NAME: &str = "plugins";
 
-// fn ensure_target_directory_exists(out_dir: &Path) -> Result<()> {
-//     let dir = out_dir.join(MODULE_NAME);
-//     if !dir.is_dir() {
-//         fs::create_dir_all(dir)?;
-//     }
-//     Ok(())
-// }
+fn ensure_target_directory_exists(out_dir: &Path) -> Result<()> {
+    let dir = out_dir.join(MODULE_NAME);
+    if !dir.is_dir() {
+        fs::create_dir_all(dir)?;
+    }
+    Ok(())
+}
 
 // fn generate_param_declarations(declarations: &Vec<&ParameterDescriptor>) -> Vec<String> {
 //     let mut generated = Vec::new();
@@ -109,10 +109,10 @@ use std::{collections::HashSet, env, fs::{self, File}, io::{Error, ErrorKind, Re
 //     Ok(())
 // }
 
-fn run() -> Result<()> {
-    Ok(())
-    // let plugins = plugins?;
-    // ensure_target_directory_exists(&out_dir)?;
-    // generate_top_level_mod_file(&out_dir, &plugins)?;
-    // Ok(())
-}
+// fn run() -> Result<()> {
+//     // Ok(())
+//     // let plugins = plugins?;
+//     // ensure_target_directory_exists(&out_dir)?;
+//     // generate_top_level_mod_file(&out_dir, &plugins)?;
+//     // Ok(())
+// }

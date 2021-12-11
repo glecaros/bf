@@ -30,43 +30,8 @@ impl<T: Task + 'static> AsTask for T {
     }
 }
 
-struct Group {
-    source_prefix: Option<PathBuf>,
-    destination_prefix: Option<PathBuf>,
-}
-
-impl Group {
-    fn create(source: Option<&str>, destination: Option<&str>, parent: Option<&Group>) -> Group {
-        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
-        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
-        let source_suffix = source.map(PathBuf::from);
-        let destination_suffix = destination.map(PathBuf::from);
-        Group {
-            source_prefix: combine_paths(source_prefix, source_suffix.as_ref()),
-            destination_prefix: combine_paths(destination_prefix, destination_suffix.as_ref()),
-        }
-    }
-}
-
-
-fn combine_paths(prefix: Option<&PathBuf>, suffix: Option<&PathBuf>) -> Option<PathBuf> {
-    if let Some(prefix) = prefix {
-        let mut prefix = prefix.to_string_lossy().to_string();
-        if !prefix.ends_with(std::path::MAIN_SEPARATOR) {
-            prefix.push(std::path::MAIN_SEPARATOR);
-        }
-        let prefix = PathBuf::from(prefix);
-        if let Some(suffix) = suffix {
-            Some(prefix.join(suffix))
-        } else {
-            Some(prefix)
-        }
-    } else {
-        suffix.map(PathBuf::from)
-    }
-}
-
-fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
+/* TODO: need to move this (and tests) to util mod */
+pub fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
     use eval::Expr;
     if let Some(condition) = condition {
         debug!("Evaluating condition {}", &condition);

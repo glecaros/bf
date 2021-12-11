@@ -3,12 +3,40 @@ use std::path::PathBuf;
 use log::info;
 use minidom::Element;
 
-use crate::{
-    commands, error::Error, internal_error, interpolation::interpolate, runtime::Runtime,
-    task::evaluate_condition,
-};
+use crate::{commands, error::Error, internal_error, interpolation::interpolate, runtime::Runtime, task::evaluate_condition, util::{evaluate_condition_from_element, interpolate_attribute, interpolate_text, ApplyPrefix}};
 
-use super::{Group, Task, combine_paths};
+use super::{Task};
+
+
+const ATTR_SOURCE: &str = "source";
+const ATTR_DESTINATION: &str = "destination";
+
+struct Group {
+    source_prefix: Option<PathBuf>,
+    destination_prefix: Option<PathBuf>,
+}
+
+impl Group {
+    fn create(element: &Element, parent: Option<&Group>, runtime: &Runtime) -> Result<Group, Error> {
+        let source = interpolate_attribute(ATTR_SOURCE, element, runtime)?.map(PathBuf::from);
+        let destination = interpolate_attribute(ATTR_DESTINATION, element, runtime)?.map(PathBuf::from);
+        let source = if let Some(group) = parent {
+            source.apply_prefix(&group.source_prefix)
+        } else {
+            source
+        };
+        let destination = if let Some(group) = parent {
+            destination.apply_prefix(&group.destination_prefix)
+        } else {
+            destination
+        };
+        Ok(Group {
+            source_prefix: source,
+            destination_prefix: destination,
+        })
+    }
+}
+
 
 #[derive(Debug)]
 struct Item {
@@ -18,13 +46,20 @@ struct Item {
 
 impl Item {
     fn create(source: &str, destination: &str, parent: Option<&Group>) -> Item {
-        let source_prefix = parent.and_then(|parent| parent.source_prefix.as_ref());
-        let destination_prefix = parent.and_then(|parent| parent.destination_prefix.as_ref());
-        let source_suffix = Some(PathBuf::from(source));
-        let destination_suffix = Some(PathBuf::from(destination));
-        Item {
-            source: combine_paths(source_prefix, source_suffix.as_ref()).unwrap(),
-            destination: combine_paths(destination_prefix, destination_suffix.as_ref()).unwrap(),
+        let source = Some(PathBuf::from(source));
+        let destination = Some(PathBuf::from(destination));
+        let source = if let Some(group) = parent {
+            source.apply_prefix(&group.source_prefix)
+        } else {
+            source
+        };
+        let destination = if let Some(group) = parent {
+            destination.apply_prefix(&group.destination_prefix)
+        } else {
+            destination
+        };Item {
+            source: source.unwrap(),
+            destination: destination.unwrap(),
         }
     }
 
@@ -65,22 +100,17 @@ impl Task for CopyTask {
     }
 }
 
-const ATTR_SOURCE: &str = "source";
-const ATTR_DESTINATION: &str = "destination";
-const ATTR_CONDITION: &str = "condition";
-
 fn parse_item(
     runtime: &Runtime,
     element: &Element,
     parent: Option<&Group>,
 ) -> Result<Option<Item>, Error> {
-    let condition = element.attr(ATTR_CONDITION);
-    let condition = evaluate_condition(condition, runtime)?;
+    let condition = evaluate_condition_from_element(runtime, element)?;
     if condition {
-        let source = element.text();
-        let source = interpolate(&source, &runtime.variables)?;
-        let destination = element.attr(ATTR_DESTINATION).unwrap_or(&source);
-        let destination = interpolate(destination, &runtime.variables)?;
+        let source = interpolate_text(element, runtime)?;
+        let source = source.ok_or(Error::from("Missing required value"))?;
+        let destination = interpolate_attribute(ATTR_DESTINATION, element, runtime)?;
+        let destination = destination.ok_or(Error::from("Missing required attribute"))?; 
         Ok(Some(Item::create(&source, &destination, parent)))
     } else {
         Ok(None)
@@ -92,18 +122,9 @@ fn parse_items(
     parent: &Element,
     group: Option<&Group>,
 ) -> Result<Option<Vec<Item>>, Error> {
-    let condition = parent.attr(ATTR_CONDITION);
-    let condition = evaluate_condition(condition, runtime)?;
+    let condition = evaluate_condition_from_element(runtime, parent)?;
     if condition {
-        let source = match parent.attr(ATTR_SOURCE) {
-            Some(source) => Some(interpolate(source, &runtime.variables)?),
-            None => None,
-        };
-        let destination = match parent.attr(ATTR_DESTINATION) {
-            Some(destination) => Some(interpolate(destination, &runtime.variables)?),
-            None => None,
-        };
-        let group = Group::create(source.as_deref(), destination.as_deref(), group);
+        let group = Group::create(parent, group, runtime)?;
         let mut items = Vec::new();
         for item in parent.children() {
             match item.name() {
