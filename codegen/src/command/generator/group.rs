@@ -63,7 +63,7 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor, 
             ));
         }
         GroupSetting::Prefix | GroupSetting::InheritPrefix => {
-            function.line(init_line);            
+            function.line(init_line);
             let mut if_block = Block::new(&format!("let {} = if let Some(group) = parent", parameter.name));
             if_block.line(format!("{var_name}.apply_prefix(&group.{var_name})", var_name = parameter.name));
             let mut else_block = Block::new("else");
@@ -115,6 +115,7 @@ pub fn generate_group_impl(element_descriptor: &ElementDescriptor) -> Impl {
 #[cfg(test)]
 mod test {
     use codegen::{Impl, Scope, Struct};
+    use regex::Regex;
 
     use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
 
@@ -155,13 +156,26 @@ mod test {
         }
     }
 
+    fn normalize(s: &str) -> String {
+        let regex = Regex::new("[\\n\\s]+").unwrap();
+        regex.replace_all(s.trim(), " ").to_string()
+    }
+
+    fn compare_struct(item: Struct, expected: &str) {
+        assert_eq!(normalize(&struct_to_string(item)), normalize(expected))
+    }
+
+    fn compare_impl(item: Impl, expected: &str) {
+        assert_eq!(normalize(&impl_to_string(item)), normalize(expected))
+    }
+
     #[test]
     fn group_none() {
         use GroupSetting::*;
         let descriptor = test_descriptor(None, None, None);
         let item = super::generate_group_definition(&descriptor);
         const EXPECTED: &str = "struct Group;";
-        assert_eq!(struct_to_string(item), EXPECTED);
+        compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -169,12 +183,13 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(Inherit, Inherit, Inherit);
         let item = super::generate_group_definition(&descriptor);
-        const EXPECTED: &str = r#"struct Group {
-    src: Option<PathBuf>,
-    dst: Option<PathBuf>,
-    tst: Option<PathBuf>,
-}"#;
-        assert_eq!(struct_to_string(item), EXPECTED);
+        const EXPECTED: &str = r#"
+        struct Group {
+            src: Option<PathBuf>,
+            dst: Option<PathBuf>,
+            tst: Option<PathBuf>,
+        }"#;
+        compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -182,11 +197,12 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(Inherit, None, Inherit);
         let item = super::generate_group_definition(&descriptor);
-        const EXPECTED: &str = r#"struct Group {
-    src: Option<PathBuf>,
-    tst: Option<PathBuf>,
-}"#;
-        assert_eq!(struct_to_string(item), EXPECTED);
+        const EXPECTED: &str = r#"
+        struct Group {
+            src: Option<PathBuf>,
+            tst: Option<PathBuf>,
+        }"#;
+        compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -194,12 +210,13 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(None, None, None);
         let item = super::generate_group_impl(&descriptor);
-        const EXPECTED: &str = r#"impl Group {
-    pub fn create() -> Result<Group, Error> {
-        Ok(Group{})
-    }
-}"#;
-        assert_eq!(impl_to_string(item), EXPECTED);
+        const EXPECTED: &str = r#"
+        impl Group {
+            pub fn create() -> Result<Group, Error> {
+                Ok(Group{})
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -207,22 +224,23 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(Inherit, Inherit, Inherit);
         let item = super::generate_group_impl(&descriptor);
-        const EXPECTED: &str = r#"impl Group {
-    pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-        let src = interpolate_text(element, runtime)?.map(PathBuf::from);
-        let src = src.or(parent.src);
-        let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-        let dst = dst.or(parent.dst);
-        let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-        let tst = tst.or(parent.tst);
-        Ok(Group {
-            src: src,
-            dst: dst,
-            tst: tst,
-        })
-    }
-}"#;
-        assert_eq!(impl_to_string(item), EXPECTED);
+        const EXPECTED: &str = r#"
+        impl Group {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = src.or(parent.src);
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = dst.or(parent.dst);
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = tst.or(parent.tst);
+                Ok(Group {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -230,42 +248,102 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(Prefix, Prefix, Prefix);
         let item = super::generate_group_impl(&descriptor);
-        const EXPECTED: &str = r#"impl Group {
-    pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-        let src = interpolate_text(element, runtime)?.map(PathBuf::from);
-        let src = if let Some(group) = parent {
-            src.apply_prefix(&group.src)
-        }
-        else {
-            src
-        };
-        let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-        let dst = if let Some(group) = parent {
-            dst.apply_prefix(&group.dst)
-        }
-        else {
-            dst
-        };
-        let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-        let tst = if let Some(group) = parent {
-            tst.apply_prefix(&group.tst)
-        }
-        else {
-            tst
-        };
-        Ok(Group {
-            src: src,
-            dst: dst,
-            tst: tst,
-        })
-    }
-}"#;
-                assert_eq!(impl_to_string(item), EXPECTED);
+        const EXPECTED: &str = r#"
+        impl Group {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = if let Some(group) = parent {
+                    src.apply_prefix(&group.src)
+                } else {
+                    src
+                };
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(group) = parent {
+                    dst.apply_prefix(&group.dst)
+                } else {
+                    dst
+                };
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(group) = parent {
+                    tst.apply_prefix(&group.tst)
+                } else {
+                    tst
+                };
+                Ok(Group {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
     }
 
     #[test]
-    fn group_impl_inherit_prefix() {}
+    fn group_impl_inherit_prefix() {
+        use GroupSetting::*;
+        let descriptor = test_descriptor(InheritPrefix, InheritPrefix, InheritPrefix);
+        let item = super::generate_group_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Group {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = if let Some(group) = parent {
+                    src.apply_prefix(&group.src)
+                } else {
+                    src
+                };
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(group) = parent {
+                    dst.apply_prefix(&group.dst)
+                } else {
+                    dst
+                };
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(group) = parent {
+                    tst.apply_prefix(&group.tst)
+                } else {
+                    tst
+                };
+                Ok(Group {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
 
     #[test]
-    fn group_impl_mixed() {}
+    fn group_impl_mixed() {
+        use GroupSetting::*;
+        let descriptor = test_descriptor(Inherit, Prefix, InheritPrefix);
+        let item = super::generate_group_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Group {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = src.or(parent.src);
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(group) = parent {
+                    dst.apply_prefix(&group.dst)
+                } else {
+                    dst
+                };
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(group) = parent {
+                    tst.apply_prefix(&group.tst)
+                } else {
+                    tst
+                };
+                Ok(Group {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
 }
