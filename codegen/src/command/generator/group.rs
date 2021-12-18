@@ -133,14 +133,6 @@ mod test {
         }
     }
 
-    fn struct_to_string(item: Struct) -> String {
-        Scope::new().push_struct(item).to_string()
-    }
-
-    fn impl_to_string(item: Impl) -> String {
-        Scope::new().push_impl(item).to_string()
-    }
-
     fn test_descriptor(
         setting1: GroupSetting,
         setting2: GroupSetting,
@@ -154,6 +146,14 @@ mod test {
                 new_parameter("tst", ParameterType::Path, true, setting3),
             ],
         }
+    }
+
+    fn struct_to_string(item: Struct) -> String {
+        Scope::new().push_struct(item).to_string()
+    }
+
+    fn impl_to_string(item: Impl) -> String {
+        Scope::new().push_impl(item).to_string()
     }
 
     fn normalize(s: &str) -> String {
