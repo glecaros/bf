@@ -17,12 +17,6 @@ fn generate_field_definition(parameter: &ParameterDescriptor) -> Option<Field> {
 
 pub fn generate_group_definition(element_descriptor: &ElementDescriptor) -> Struct {
     let mut struct_definition = Struct::new("Group");
-    if let Some(value) = &element_descriptor.value {
-        let field = generate_field_definition(value);
-        if let Some(field) = field {
-            struct_definition.push_field(field);
-        }
-    }
     for attribute in &element_descriptor.attributes {
         let field = generate_field_definition(attribute);
         if let Some(field) = field {
@@ -87,15 +81,6 @@ pub fn generate_group_impl(element_descriptor: &ElementDescriptor) -> Impl {
             .arg("runtime", Type::new("&Runtime"));
         let mut constructor = Block::new("Ok(Group");
         constructor.after(")");
-        if let Some(parameter) = &element_descriptor.value {
-            add_parameter_code(&mut create_function, parameter, Source::Text);
-            if !matches!(parameter.allow_group, GroupSetting::None) {
-                constructor.line(format!(
-                    "{var_name}: {var_name},",
-                    var_name = parameter.name
-                ));
-            }
-        }
         for attribute in &element_descriptor.attributes {
             add_parameter_code(&mut create_function, attribute, Source::Attribute);
             if !matches!(attribute.allow_group, GroupSetting::None) {
@@ -140,8 +125,8 @@ mod test {
     ) -> ElementDescriptor {
         ElementDescriptor {
             tag: String::from("copy"),
-            value: Some(new_parameter("src", ParameterType::Path, true, setting1)),
             attributes: vec![
+                new_parameter("src", ParameterType::Path, true, setting1),
                 new_parameter("dst", ParameterType::Path, false, setting2),
                 new_parameter("tst", ParameterType::Path, true, setting3),
             ],
@@ -227,7 +212,7 @@ mod test {
         const EXPECTED: &str = r#"
         impl Group {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = src.or(parent.src);
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
                 let dst = dst.or(parent.dst);
@@ -251,7 +236,7 @@ mod test {
         const EXPECTED: &str = r#"
         impl Group {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = if let Some(group) = parent {
                     src.apply_prefix(&group.src)
                 } else {
@@ -287,7 +272,7 @@ mod test {
         const EXPECTED: &str = r#"
         impl Group {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = if let Some(group) = parent {
                     src.apply_prefix(&group.src)
                 } else {
@@ -323,7 +308,7 @@ mod test {
         const EXPECTED: &str = r#"
         impl Group {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
-                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = src.or(parent.src);
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
                 let dst = if let Some(group) = parent {

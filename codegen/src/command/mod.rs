@@ -47,7 +47,6 @@ pub struct CommandDescriptor {
 #[derive(Debug, Deserialize)]
 pub struct ElementDescriptor {
     tag: String,
-    value: Option<ParameterDescriptor>,
     attributes: Vec<ParameterDescriptor>,
 }
 
@@ -59,9 +58,8 @@ impl ElementDescriptor {
                 _ => true,
             }
         };
-        let value_allows = self.value.as_ref().map(allows_group);
         let attr_allows = self.attributes.iter().map(allows_group).find(|predicate| *predicate);
-        value_allows.or(attr_allows).unwrap_or(false)
+        attr_allows.unwrap_or(false)
     }
 }
 

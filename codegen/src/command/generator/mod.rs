@@ -24,14 +24,6 @@ pub fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
 pub fn generate_parse_item(element_descriptor: &ElementDescriptor) -> Function {
     let mut inner_block = Block::new("if condition");
     let mut constructor = Block::new("Item");
-    if let Some(value) = &element_descriptor.value {
-        let var_name = &value.name;
-        inner_block.line(format!("let {var} = interpolate_text(element, runtime)?;", var=var_name));
-        if value.required {
-            inner_block.line(format!("let {var} = {var}.ok_or(Error::from(\"Missing required value '{var}'\")", var = var_name));
-        }
-        constructor.line(format!("{var}: {var},", var=var_name));
-    }
     for attribute in &element_descriptor.attributes {
         let var_name = &attribute.name;
         inner_block.line(format!("let {var} = interpolate_attribute(\"{var}\", element, runtime)?;", var = var_name));
