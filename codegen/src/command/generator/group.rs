@@ -26,27 +26,15 @@ pub fn generate_group_definition(element_descriptor: &ElementDescriptor) -> Stru
     struct_definition
 }
 
-enum Source {
-    Text,
-    Attribute,
-}
-
-fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor, source: Source) {
+fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) {
     let conversion_suffix = match &parameter.parameter_type {
         ParameterType::Path => ".map(PathBuf::from)",
     };
-    let init_line = match source {
-        Source::Text => format!(
-            "let {var_name} = interpolate_text(element, runtime)?{suffix};",
-            var_name = parameter.name,
-            suffix = conversion_suffix
-        ),
-        Source::Attribute => format!(
-            r#"let {var_name} = interpolate_attribute("{var_name}", element, runtime)?{suffix};"#,
-            var_name = parameter.name,
-            suffix = conversion_suffix
-        ),
-    };
+    let init_line = format!(
+        r#"let {var_name} = interpolate_attribute("{var_name}", element, runtime)?{suffix};"#,
+        var_name = parameter.name,
+        suffix = conversion_suffix
+    );
     match parameter.allow_group {
         GroupSetting::None => (),
         GroupSetting::Inherit => {
@@ -58,14 +46,20 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor, 
         }
         GroupSetting::Prefix | GroupSetting::InheritPrefix => {
             function.line(init_line);
-            let mut if_block = Block::new(&format!("let {} = if let Some(group) = parent", parameter.name));
-            if_block.line(format!("{var_name}.apply_prefix(&group.{var_name})", var_name = parameter.name));
+            let mut if_block = Block::new(&format!(
+                "let {} = if let Some(group) = parent",
+                parameter.name
+            ));
+            if_block.line(format!(
+                "{var_name}.apply_prefix(&group.{var_name})",
+                var_name = parameter.name
+            ));
             let mut else_block = Block::new("else");
             else_block.line(format!("{var_name}", var_name = parameter.name));
             else_block.after(";");
             function.push_block(if_block);
             function.push_block(else_block);
-        },
+        }
     }
 }
 
@@ -82,7 +76,7 @@ pub fn generate_group_impl(element_descriptor: &ElementDescriptor) -> Impl {
         let mut constructor = Block::new("Ok(Group");
         constructor.after(")");
         for attribute in &element_descriptor.attributes {
-            add_parameter_code(&mut create_function, attribute, Source::Attribute);
+            add_parameter_code(&mut create_function, attribute);
             if !matches!(attribute.allow_group, GroupSetting::None) {
                 constructor.line(format!(
                     "{var_name}: {var_name},",

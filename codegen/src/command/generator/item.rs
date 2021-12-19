@@ -1,22 +1,86 @@
-use codegen::{Struct, Impl};
+use codegen::{Block, Field, Function, Impl, Struct, Type};
 
-use crate::command::ElementDescriptor;
+use crate::command::{ElementDescriptor, ParameterDescriptor, ParameterType, GroupSetting};
 
+fn generate_field_definition(parameter: &ParameterDescriptor) -> Field {
+    let field_type = match parameter.parameter_type {
+        ParameterType::Path => "PathBuf",
+    };
+    if parameter.required {
+        Field::new(&parameter.name, field_type)
+    } else {
+        let field_type = Type::new("Option").generic(field_type).to_owned();
+        Field::new(&parameter.name, field_type)
+    }
+}
 
 fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
-    todo!();
+    let mut struct_definition = Struct::new("Item");
+    for attribute in &element_descriptor.attributes {
+        let field = generate_field_definition(attribute);
+        struct_definition.push_field(field);
+    }
+    struct_definition
+}
+
+fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) {
+    let conversion_suffix = match &parameter.parameter_type {
+        ParameterType::Path => ".map(PathBuf::from);",
+    };
+    let init_line = format!(
+        r#"let {var_name} = interpolate_attribute("{var_name}", element, runtime)?{suffix}"#,
+        var_name = parameter.name,
+        suffix = conversion_suffix
+    );
+    function.line(init_line);
+    match parameter.allow_group {
+        GroupSetting::None => (),
+        GroupSetting::Inherit => {
+            function.line(format!("let {var_name} = {var_name}.or(parent.{var_name});", var_name = parameter.name));
+        },
+        GroupSetting::Prefix => {
+            let prefix = format!("let {var_name} = if let (Some(group), Some({var_name})) = (parent, {var_name})", var_name = parameter.name);
+            let mut if_block = Block::new(&prefix);
+            if_block.line(format!("Some({var_name}).apply_prefix(&group.{var_name})", var_name = parameter.name));
+            let mut else_block = Block::new("else");
+            else_block.line(&parameter.name);
+            else_block.after(";");
+            function.push_block(if_block);
+            function.push_block(else_block);
+        },
+        GroupSetting::InheritPrefix => todo!(),
+    }
+    if parameter.required {
+        function.line(format!(r#"let {var_name} = {var_name}.ok_or(Error::from("Missing required value: '{var_name}'"))?;"#, var_name = parameter.name));
+    }
 }
 
 fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
-    todo!();
+    let mut create_function = Function::new("create")
+        .vis("pub")
+        .ret(Type::new("Result<Item, Error>"))
+        .arg("element", Type::new("&Element"))
+        .arg("parent", Type::new("&Group"))
+        .arg("runtime", "&Runtime")
+        .to_owned();
+    let mut constructor = Block::new("Ok(Item").after(")").to_owned();
+    for attribute in &element_descriptor.attributes {
+        add_parameter_code(&mut create_function, attribute);
+        constructor.line(format!(
+            "{var_name}: {var_name},",
+            var_name = attribute.name
+        ));
+    }
+    create_function.push_block(constructor);
+    Impl::new("Item").push_fn(create_function).to_owned()
 }
 
 #[cfg(test)]
 mod test {
-    use codegen::{Struct, Scope, Impl};
+    use codegen::{Impl, Scope, Struct};
     use regex::Regex;
 
-    use crate::command::{ParameterType, GroupSetting, ParameterDescriptor, ElementDescriptor};
+    use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
 
     fn new_parameter(
         name: &str,
@@ -39,8 +103,8 @@ mod test {
     ) -> ElementDescriptor {
         ElementDescriptor {
             tag: String::from("copy"),
-            value: Some(new_parameter("src", ParameterType::Path, setting1.1, setting1.0)),
             attributes: vec![
+                new_parameter("src", ParameterType::Path, setting1.1, setting1.0),
                 new_parameter("dst", ParameterType::Path, setting2.1, setting2.0),
                 new_parameter("tst", ParameterType::Path, setting3.1, setting3.0),
             ],
@@ -78,7 +142,7 @@ mod test {
             src: PathBuf,
             dst: PathBuf,
             tst: PathBuf,
-        };"#;
+        }"#;
         compare_struct(item, EXPECTED)
     }
 
@@ -92,7 +156,7 @@ mod test {
             src: Option<PathBuf>,
             dst: Option<PathBuf>,
             tst: Option<PathBuf>,
-        };"#;
+        }"#;
         compare_struct(item, EXPECTED)
     }
 
@@ -104,11 +168,120 @@ mod test {
         const EXPECTED: &str = r#"
         impl Item {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
-                let src = interpolate_text(element, runtime)?.map(PathBuf::from);
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
+
+    #[test]
+    fn item_impl_required_inherit() {
+        use GroupSetting::*;
+        let descriptor = test_descriptor((Inherit, true), (Inherit, true), (Inherit, true));
+        let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = src.or(parent.src);
+                let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = dst.or(parent.dst);
+                let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = tst.or(parent.tst);
+                let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
+
+    #[test]
+    fn item_impl_required_prefix() {
+        use GroupSetting::*;
+        let descriptor = test_descriptor((Prefix, true), (Prefix, true), (Prefix, true));
+        let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = if let (Some(group), Some(src)) = (parent, src) {
+                    Some(src).apply_prefix(&group.src)
+                } else {
+                    src
+                };
+                let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let (Some(group), Some(dst)) = (parent, dst) {
+                    Some(dst).apply_prefix(&group.dst)
+                } else {
+                    dst
+                };
+                let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let (Some(group), Some(tst)) = (parent, tst) {
+                    Some(tst).apply_prefix(&group.tst)
+                } else {
+                    tst
+                };
+                let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
+
+    #[test]
+    fn item_impl_required_inherit_prefix() {
+        use GroupSetting::*;
+        let descriptor = test_descriptor(
+            (InheritPrefix, true),
+            (InheritPrefix, true),
+            (InheritPrefix, true),
+        );
+        let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = if let Some(group) = parent {
+                    src.apply_prefix(&group.src)
+                } else {
+                    src
+                }
                 let src = src.ok_or(Error::From("Missing required value: 'src'"))?;
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(group) = parent {
+                    dst.apply_prefix(&group.dst)
+                } else {
+                    dst
+                }
                 let dst = dst.ok_or(Error::From("Missing required value: 'dst'"))?;
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(group) = parent {
+                    tst.apply_prefix(&group.tst)
+                } else {
+                    tst
+                }
                 let tst = dst.ok_or(Error::From("Missing required value: 'tst'"))?;
                 Ok(Item {
                     src: src,
@@ -118,31 +291,6 @@ mod test {
             }
         }"#;
         compare_impl(item, EXPECTED);
-
-    }
-
-    #[test]
-    fn item_impl_required_inherit() {
-        use GroupSetting::*;
-        let descriptor = test_descriptor((Inherit, true), (Inherit, true), (Inherit, true));
-        let item = super::generate_item_impl(&descriptor);
-        compare_impl(item, EXPECTED);
-    }
-
-    #[test]
-    fn item_impl_required_prefix() {
-        use GroupSetting::*;
-        let descriptor = test_descriptor((Prefix, true), (Prefix, true), (Prefix, true));
-        let item = super::generate_item_impl(&descriptor);
-        compare_impl(item, EXPECTED);
-    }
-
-    #[test]
-    fn item_impl_required_inherit_prefix() {
-        use GroupSetting::*;
-        let descriptor = test_descriptor((InheritPrefix, true), (InheritPrefix, true), (InheritPrefix, true));
-        let item = super::generate_item_impl(&descriptor);
-        compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -150,6 +298,19 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor((None, false), (None, false), (None, false));
         let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
         compare_impl(item, EXPECTED);
     }
 
@@ -158,6 +319,22 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor((Inherit, false), (Inherit, false), (Inherit, false));
         let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = src.or(parent.src);
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = dst.or(parent.dst);
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = tst.or(parent.tst);
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
         compare_impl(item, EXPECTED);
     }
 
@@ -166,15 +343,71 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor((Prefix, false), (Prefix, false), (Prefix, false));
         let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = if let (Some(group), Some(src)) = (parent, src) {
+                    Some(src).apply_prefix(&group.src)
+                } else {
+                    src
+                };
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let (Some(group), Some(dst)) = (parent, dst) {
+                    Some(dst).apply_prefix(&group.dst)
+                } else {
+                    dst
+                };
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let (Some(group), Some(tst)) = (parent, tst) {
+                    Some(tst).apply_prefix(&group.tst)
+                } else {
+                    tst
+                }
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
         compare_impl(item, EXPECTED);
     }
 
     #[test]
     fn item_impl_not_required_inherit_prefix() {
         use GroupSetting::*;
-        let descriptor = test_descriptor((InheritPrefix, true), (InheritPrefix, true), (None, true));
+        let descriptor =
+            test_descriptor((InheritPrefix, true), (InheritPrefix, true), (None, true));
         let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = if let Some(group) = parent {
+                    src.apply_prefix(&group.src)
+                } else {
+                    src
+                }
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(group) = parent {
+                    dst.apply_prefix(&group.dst)
+                } else {
+                    dst
+                }
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(group) = parent {
+                    tst.apply_prefix(&group.tst)
+                } else {
+                    tst
+                }
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
         compare_impl(item, EXPECTED);
     }
-
 }
