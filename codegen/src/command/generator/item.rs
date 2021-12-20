@@ -1,6 +1,8 @@
+use std::io::BufRead;
+
 use codegen::{Block, Field, Function, Impl, Struct, Type};
 
-use crate::command::{ElementDescriptor, ParameterDescriptor, ParameterType, GroupSetting};
+use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
 
 fn generate_field_definition(parameter: &ParameterDescriptor) -> Field {
     let field_type = match parameter.parameter_type {
@@ -36,19 +38,47 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) 
     match parameter.allow_group {
         GroupSetting::None => (),
         GroupSetting::Inherit => {
-            function.line(format!("let {var_name} = {var_name}.or(parent.{var_name});", var_name = parameter.name));
-        },
+            function.line(format!(
+                "let {var_name} = {var_name}.or(parent.{var_name});",
+                var_name = parameter.name
+            ));
+        }
         GroupSetting::Prefix => {
-            let prefix = format!("let {var_name} = if let (Some(group), Some({var_name})) = (parent, {var_name})", var_name = parameter.name);
-            let mut if_block = Block::new(&prefix);
-            if_block.line(format!("Some({var_name}).apply_prefix(&group.{var_name})", var_name = parameter.name));
-            let mut else_block = Block::new("else");
-            else_block.line(&parameter.name);
-            else_block.after(";");
+            let prefix = format!(
+                "let {var_name} = if let (Some(group), Some({var_name})) = (parent, {var_name})",
+                var_name = parameter.name
+            );
+            let if_block = Block::new(&prefix)
+                .line(format!(
+                    "Some({var_name}).apply_prefix(&group.{var_name})",
+                    var_name = parameter.name
+                ))
+                .to_owned();
+            let else_block = Block::new("else")
+                .line(&parameter.name)
+                .after(";")
+                .to_owned();
             function.push_block(if_block);
             function.push_block(else_block);
-        },
-        GroupSetting::InheritPrefix => todo!(),
+        }
+        GroupSetting::InheritPrefix => {
+            let prefix = format!(
+                "let {var_name} = if let Some(group) = parent",
+                var_name = parameter.name
+            );
+            let if_block = Block::new(&prefix)
+                .line(format!(
+                    "{var_name}.apply_prefix(&group.{var_name})",
+                    var_name = parameter.name
+                ))
+                .to_owned();
+            let else_block = Block::new("else")
+                .line(&parameter.name)
+                .after(";")
+                .to_owned();
+            function.push_block(if_block);
+            function.push_block(else_block);
+        }
     }
     if parameter.required {
         function.line(format!(r#"let {var_name} = {var_name}.ok_or(Error::from("Missing required value: '{var_name}'"))?;"#, var_name = parameter.name));
@@ -267,22 +297,22 @@ mod test {
                     src.apply_prefix(&group.src)
                 } else {
                     src
-                }
-                let src = src.ok_or(Error::From("Missing required value: 'src'"))?;
+                };
+                let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
                 let dst = if let Some(group) = parent {
                     dst.apply_prefix(&group.dst)
                 } else {
                     dst
-                }
-                let dst = dst.ok_or(Error::From("Missing required value: 'dst'"))?;
+                };
+                let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
                 let tst = if let Some(group) = parent {
                     tst.apply_prefix(&group.tst)
                 } else {
                     tst
-                }
-                let tst = dst.ok_or(Error::From("Missing required value: 'tst'"))?;
+                };
+                let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
                 Ok(Item {
                     src: src,
                     dst: dst,
@@ -363,7 +393,7 @@ mod test {
                     Some(tst).apply_prefix(&group.tst)
                 } else {
                     tst
-                }
+                };
                 Ok(Item {
                     src: src,
                     dst: dst,
@@ -378,7 +408,7 @@ mod test {
     fn item_impl_not_required_inherit_prefix() {
         use GroupSetting::*;
         let descriptor =
-            test_descriptor((InheritPrefix, true), (InheritPrefix, true), (None, true));
+            test_descriptor((InheritPrefix, false), (InheritPrefix, false), (InheritPrefix, false));
         let item = super::generate_item_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Item {
@@ -388,19 +418,19 @@ mod test {
                     src.apply_prefix(&group.src)
                 } else {
                     src
-                }
+                };
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
                 let dst = if let Some(group) = parent {
                     dst.apply_prefix(&group.dst)
                 } else {
                     dst
-                }
+                };
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
                 let tst = if let Some(group) = parent {
                     tst.apply_prefix(&group.tst)
                 } else {
                     tst
-                }
+                };
                 Ok(Item {
                     src: src,
                     dst: dst,
