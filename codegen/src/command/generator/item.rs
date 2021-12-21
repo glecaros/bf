@@ -16,7 +16,7 @@ fn generate_field_definition(parameter: &ParameterDescriptor) -> Field {
     }
 }
 
-fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
+pub fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
     let mut struct_definition = Struct::new("Item");
     for attribute in &element_descriptor.attributes {
         let field = generate_field_definition(attribute);
@@ -85,7 +85,7 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) 
     }
 }
 
-fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
+pub fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
     let mut create_function = Function::new("create")
         .vis("pub")
         .ret(Type::new("Result<Item, Error>"))

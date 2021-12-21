@@ -8,10 +8,8 @@ use super::ElementDescriptor;
 macro_rules! t {
     ($ty:literal) => {
         Type::new($ty)
-
     };
 }
-
 
 pub fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
     todo!();
@@ -21,65 +19,147 @@ pub fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
     todo!();
 }
 
-pub fn generate_parse_item(element_descriptor: &ElementDescriptor) -> Function {
-    let mut inner_block = Block::new("if condition");
-    let mut constructor = Block::new("Item");
-    for attribute in &element_descriptor.attributes {
-        let var_name = &attribute.name;
-        inner_block.line(format!("let {var} = interpolate_attribute(\"{var}\", element, runtime)?;", var = var_name));
-        if attribute.required {
-            inner_block.line(format!("let {var} = {var}.ok_or(Error::from(\"Missing required attribute '{var}'\"));", var = var_name));
-        }
-        constructor.line(format!("{var}: {var},", var=var_name));
-    }
-    inner_block.push_block(constructor);
-
+pub fn generate_parse_item() -> Function {
+    let if_block = Block::new("let item = if condition")
+        .line("let item = Item::create(element, parent, runtime)?;")
+        .line("Some(item)")
+        .to_owned();
+    let else_block = Block::new("else").line("None").after(";").to_owned();
     Function::new("parse_item")
         .arg("runtime", t!("&Runtime"))
-        .arg("parent", t!("&Element"))
-        .arg("group", t!("Option<&Group>"))
+        .arg("element", t!("&Element"))
+        .arg("parent", t!("Option<&Group>"))
         .ret(t!("Result<Option<Item>, Error>"))
         .line("let condition = evaluate_condition_from_element(runtime, element)?;")
-        .push_block(inner_block)
-        .push_block(Block::new("else").line("Ok(None)").to_owned()).to_owned()
-
+        .push_block(if_block)
+        .push_block(else_block)
+        .line("Ok(item)")
+        .to_owned()
 }
 
-pub fn generate_parse_items(element_descriptor: &ElementDescriptor) -> Function {
-    let mut inner_block = Block::new("if condition");
+fn generate_parse_items_loop() -> Block {
+    let item_arm = Block::new("\"item\" => ")
+        .line("let item = parse_item(runtime, item, Some(&group))?;")
+        .push_block(
+            Block::new("if let Some(item) = item")
+                .line("items.push(item);")
+                .to_owned(),
+        )
+        .to_owned();
+    let group_arm = Block::new("\"group\" => ")
+        .line("let inner_items = parse_items(runtime, item, Some(&group))?;")
+        .push_block(
+            Block::new("if let Some(mut inner_items) = inner_items")
+                .line("items.append(&mut inner_items);")
+                .to_owned(),
+        )
+        .to_owned();
+    let catch_all_arm = Block::new("_ =>")
+        .line("Err(internal_error!(\"Invalid element: {}\", item.name()))?;")
+        .to_owned();
+    let match_block = Block::new("match item.name()")
+        .push_block(item_arm)
+        .push_block(group_arm)
+        .push_block(catch_all_arm)
+        .to_owned();
+    Block::new("for item in parent.children()")
+        .push_block(match_block)
+        .to_owned()
+}
 
+pub fn generate_parse_items() -> Function {
+    let if_block = Block::new("let items = if condition")
+        .line("let group = Group::create(parent, group, runtime)?;")
+        .line("let mut items = Vec::new();")
+        .push_block(generate_parse_items_loop())
+        .line("Some(items)")
+        .to_owned();
+    let else_block = Block::new("else").line("None").after(";").to_owned();
     Function::new("parse_items")
         .arg("runtime", t!("&Runtime"))
         .arg("parent", t!("&Element"))
         .arg("group", t!("Option<&Group>"))
         .ret(t!("Result<Option<Vec<Item>>, Error>"))
         .line("let condition = evaluate_condition_from_element(runtime, parent)?;")
-        .push_block(inner_block)
-        .push_block(Block::new("else").line("Ok(None)").to_owned())
+        .push_block(if_block)
+        .push_block(else_block)
+        .line("Ok(items)")
         .to_owned()
 }
 
+#[cfg(test)]
+mod test {
+    use codegen::{Function, Scope};
+    use regex::Regex;
 
-// pub fn generate_parse_items(element_descriptor: &ElementDescriptor) -> Function {
-//     let mut function = Function::new("parse_items");
-//     function
-//         .arg("runtime", Type::new("&Runtime"))
-//         .arg("parent", Type::new("&Element"))
-//         .arg("group", Type::new("Option<&Group>"))
-//         .ret(Type::new("Result<Option<Vec<Item>>, Error>"))
-//         .line("let condition = parent.attr(ATTR_CONDITION)")
-//         .line("let condition = evaluate_condition(condition, runtime)?;")
-//         .push_block(block!("if condition" |
-//             "let source = match parent.attr(A);"
-//         |));
-//         // .push_block(Block::new("if condition")
-//         //     .push_block(Block::new("let source = match parent.attr(ATTR_SOURCE)")
-//         //         .line("Some(source) => Some(interpolate(source, &runtime.variables)?)",)
-//         //         // .line("None => None,").to_owned()).after(after).to_owned()
-//         // )
-//         // .push_block(Block::new("else")
-//         //     .line("Ok(None)").to_owned()
-//         // );
-//     function
-// }
+    use crate::command::generator::{generate_parse_item, generate_parse_items};
 
+    fn function_to_string(item: Function) -> String {
+        Scope::new().push_fn(item).to_string()
+    }
+
+    fn normalize(s: &str) -> String {
+        let regex = Regex::new("[\\n\\s]+").unwrap();
+        regex.replace_all(s.trim(), " ").to_string()
+    }
+
+    fn compare_function(item: Function, expected: &str) {
+        assert_eq!(normalize(&function_to_string(item)), normalize(expected))
+    }
+
+    #[test]
+    fn parse_item() {
+        let item = generate_parse_item();
+        const EXPECTED: &str = r#"
+        fn parse_item(runtime: &Runtime, element: &Element, parent: Option<&Group>) -> Result<Option<Item>, Error> {
+            let condition = evaluate_condition_from_element(runtime, element)?;
+            let item = if condition {
+                let item = Item::create(element, parent, runtime)?;
+                Some(item)
+            } else {
+                None
+            };
+            Ok(item)
+        }
+        "#;
+        compare_function(item, EXPECTED);
+    }
+
+    #[test]
+    fn parse_items() {
+        let item = generate_parse_items();
+        const EXPECTED: &str = r#"
+        fn parse_items(runtime: &Runtime, parent: &Element, group: Option<&Group>) -> Result<Option<Vec<Item>>, Error> {
+            let condition = evaluate_condition_from_element(runtime, parent)?;
+            let items = if condition {
+                let group = Group::create(parent, group, runtime)?;
+                let mut items = Vec::new();
+                for item in parent.children() {
+                    match item.name() {
+                        "item" => {
+                            let item = parse_item(runtime, item, Some(&group))?;
+                            if let Some(item) = item {
+                                items.push(item);
+                            }
+                        }
+                        "group" => {
+                            let inner_items = parse_items(runtime, item, Some(&group))?;
+                            if let Some(mut inner_items) = inner_items {
+                                items.append(&mut inner_items);
+                            }
+                        }
+                        _ => {
+                            Err(internal_error!("Invalid element: {}", item.name()))?;
+                        }
+                    }
+                }
+                Some(items)
+            } else {
+                None
+            };
+            Ok(items)
+        }
+        "#;
+        compare_function(item, EXPECTED);
+    }
+}

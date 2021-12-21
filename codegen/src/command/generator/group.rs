@@ -40,7 +40,7 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) 
         GroupSetting::Inherit => {
             function.line(init_line);
             function.line(format!(
-                "let {var_name} = {var_name}.or(parent.{var_name});",
+                "let {var_name} = {var_name}.or(parent.map(|group| group.{var_name}));",
                 var_name = parameter.name
             ));
         }
@@ -71,7 +71,7 @@ pub fn generate_group_impl(element_descriptor: &ElementDescriptor) -> Impl {
     if element_descriptor.uses_groups() {
         create_function
             .arg("element", Type::new("&Element"))
-            .arg("parent", Type::new("&Group"))
+            .arg("parent", Type::new("Option<&Group>"))
             .arg("runtime", Type::new("&Runtime"));
         let mut constructor = Block::new("Ok(Group");
         constructor.after(")");
@@ -205,13 +205,13 @@ mod test {
         let item = super::generate_group_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Group {
-            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+            pub fn create(element: &Element, parent: Option<&Group>, runtime: &Runtime) -> Result<Group, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = src.or(parent.src);
+                let src = src.or(parent.map(|group| group.src));
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-                let dst = dst.or(parent.dst);
+                let dst = dst.or(parent.map(|group| group.dst));
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-                let tst = tst.or(parent.tst);
+                let tst = tst.or(parent.map(|group| group.tst));
                 Ok(Group {
                     src: src,
                     dst: dst,
@@ -229,7 +229,7 @@ mod test {
         let item = super::generate_group_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Group {
-            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+            pub fn create(element: &Element, parent: Option<&Group>, runtime: &Runtime) -> Result<Group, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = if let Some(group) = parent {
                     src.apply_prefix(&group.src)
@@ -265,7 +265,7 @@ mod test {
         let item = super::generate_group_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Group {
-            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+            pub fn create(element: &Element, parent: Option<&Group>, runtime: &Runtime) -> Result<Group, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
                 let src = if let Some(group) = parent {
                     src.apply_prefix(&group.src)
@@ -301,9 +301,9 @@ mod test {
         let item = super::generate_group_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Group {
-            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Group, Error> {
+            pub fn create(element: &Element, parent: Option<&Group>, runtime: &Runtime) -> Result<Group, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = src.or(parent.src);
+                let src = src.or(parent.map(|group| group.src));
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
                 let dst = if let Some(group) = parent {
                     dst.apply_prefix(&group.dst)
