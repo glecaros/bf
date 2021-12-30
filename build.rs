@@ -1,7 +1,13 @@
-use std::io::Result;
+use std::{io::Result, path::{Path, PathBuf}, env};
 
 fn run() -> Result<()> {
-//     const PATH: &str = "./plugins/";
+    const PATH: &str = "./plugins/";
+    const TARGET_FILE: &str = "commands.rs";
+    println!("cargo:rerun-if-changed=plugins/");
+    let out_file = env::var_os("OUT_DIR").map(|path| {
+        PathBuf::from(&path).join(TARGET_FILE)
+    }).unwrap();
+    codegen::generate_from_path(Path::new(PATH), &out_file)
 //     let out_dir = env::var("OUT_DIR").map(PathBuf::from).unwrap();
 //     // let log = out_dir.join("log.txt");
 //     // // let mut log = FileWriter::new(&log)?;
@@ -26,7 +32,7 @@ fn run() -> Result<()> {
 //             Ok(plugin)
 //         })
 //         .collect()?;
-    Ok(())
+    // Ok(())
 }
 
 fn main() {

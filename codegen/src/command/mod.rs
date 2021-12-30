@@ -1,8 +1,11 @@
 mod generator;
 
-use std::{fs::{self, File}, io::{Error, ErrorKind, Read, Result}, path::Path};
+use std::{fs::{self, File}, io::{Error, ErrorKind, Read, Result, Write}, path::Path};
 
+use codegen::Module;
 use serde::Deserialize;
+
+use self::generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items};
 
 
 #[derive(Debug, Deserialize)]
@@ -12,7 +15,7 @@ pub enum ParameterType {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum GroupSetting {
     None,
     Inherit,
@@ -38,10 +41,17 @@ macro_rules! invalid {
 
 
 #[derive(Debug, Deserialize)]
-pub struct CommandDescriptor {
+pub struct CommandLineDescriptor {
     linux: String,
     windows: String,
     osx: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Command {
+    Snippet(String),
+    CommandLine(CommandLineDescriptor)
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,7 +76,7 @@ impl ElementDescriptor {
 #[derive(Debug, Deserialize)]
 pub struct PluginDescriptor {
     name: String,
-    command: CommandDescriptor,
+    command: Command,
     element: ElementDescriptor,
 }
 
@@ -95,21 +105,22 @@ impl PluginDescriptor {
                 PluginDescriptor::from_reader(file)
             })
             .collect()
-    }
+    } 
 
-    fn generate(&self) -> Result<String> {
-        let command = if cfg!(target_os = "windows") {
-            Ok(&self.command.windows)
-        } else if cfg!(target_os = "linux") {
-            Ok(&self.command.linux)
-        } else if cfg!(target_os = "macos") {
-            Ok(&self.command.osx)
-        } else {
-            Err(Error::new(
-                ErrorKind::Unsupported,
-                "Target OS not supported",
-            ))
-        }?;
-        todo!()
+    pub fn generate(&self) -> Module {
+        let group_struct = generate_group_definition(&self.element);
+        let group_impl = generate_group_impl(&self.element);
+        let item_struct = generate_item_definition(&self.element);
+        let item_impl = generate_item_impl(&self.element);
+        let parse_item_fn = generate_parse_item();
+        let parse_items_fn = generate_parse_items();
+        Module::new(&self.name)
+            .push_struct(group_struct)
+            .push_impl(group_impl)
+            .push_struct(item_struct)
+            .push_impl(item_impl)
+            .push_fn(parse_item_fn)
+            .push_fn(parse_items_fn)
+            .to_owned()
     }
 }

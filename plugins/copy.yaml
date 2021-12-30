@@ -1,0 +1,20 @@
+name: copy
+command:
+  snippet: |
+    let directory = ${destination}.parent();
+    if let Some(directory) = directory {
+      std::fs::create_dir_all(directory)?;
+    }
+    std::fs::copy(${source}, ${destination})?;
+    Ok(())
+element:
+  tag: copy
+  attributes:
+    - name: source
+      type: path
+      allow_group: prefix
+      required: true
+    - name: destination
+      type: path
+      allow_group: inherit_prefix
+      required: false

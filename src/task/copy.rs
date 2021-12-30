@@ -141,7 +141,7 @@ fn parse_items(
                     }
                 }
                 _ => {
-                    return Err(internal_error!("Invalid element {}", item.name()));
+                    Err(internal_error!("Invalid element {}", item.name()))?;
                 }
             }
         }

@@ -1,9 +1,7 @@
 mod group;
 mod item;
 
-use codegen::{Block, Function, Impl, Struct, Type};
-
-use super::ElementDescriptor;
+use codegen::{Block, Function, Type};
 
 macro_rules! t {
     ($ty:literal) => {
@@ -11,13 +9,10 @@ macro_rules! t {
     };
 }
 
-pub fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
-    todo!();
-}
-
-pub fn generate_item_impl(element_descriptor: &ElementDescriptor) -> Impl {
-    todo!();
-}
+pub use group::generate_group_definition;
+pub use group::generate_group_impl;
+pub use item::generate_item_definition;
+pub use item::generate_item_impl;
 
 pub fn generate_parse_item() -> Function {
     let if_block = Block::new("let item = if condition")
@@ -76,6 +71,7 @@ pub fn generate_parse_items() -> Function {
         .to_owned();
     let else_block = Block::new("else").line("None").after(";").to_owned();
     Function::new("parse_items")
+        .vis("pub")
         .arg("runtime", t!("&Runtime"))
         .arg("parent", t!("&Element"))
         .arg("group", t!("Option<&Group>"))
@@ -129,7 +125,7 @@ mod test {
     fn parse_items() {
         let item = generate_parse_items();
         const EXPECTED: &str = r#"
-        fn parse_items(runtime: &Runtime, parent: &Element, group: Option<&Group>) -> Result<Option<Vec<Item>>, Error> {
+        pub fn parse_items(runtime: &Runtime, parent: &Element, group: Option<&Group>) -> Result<Option<Vec<Item>>, Error> {
             let condition = evaluate_condition_from_element(runtime, parent)?;
             let items = if condition {
                 let group = Group::create(parent, group, runtime)?;
