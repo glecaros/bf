@@ -1,7 +1,7 @@
 mod group;
 mod item;
 
-use codegen::{Block, Function, Type};
+use codegen::{Block, Function, Type, Enum, Struct};
 
 macro_rules! t {
     ($ty:literal) => {
@@ -13,6 +13,12 @@ pub use group::generate_group_definition;
 pub use group::generate_group_impl;
 pub use item::generate_item_definition;
 pub use item::generate_item_impl;
+
+use super::PluginDescriptor;
+
+pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
+    todo!()
+}
 
 pub fn generate_parse_item() -> Function {
     let if_block = Block::new("let item = if condition")
@@ -71,7 +77,6 @@ pub fn generate_parse_items() -> Function {
         .to_owned();
     let else_block = Block::new("else").line("None").after(";").to_owned();
     Function::new("parse_items")
-        .vis("pub")
         .arg("runtime", t!("&Runtime"))
         .arg("parent", t!("&Element"))
         .arg("group", t!("Option<&Group>"))
@@ -83,15 +88,47 @@ pub fn generate_parse_items() -> Function {
         .to_owned()
 }
 
+pub fn generate_task_struct() -> Struct {
+    Struct::new("Task")
+        .vis("pub")
+        .field("pub items", t!("Vec<Item>"))
+        .to_owned()
+}
+
+pub fn generate_parse_task() -> Function {
+    let constructor = Block::new("Task")
+        .line("items: items")
+        .to_owned();
+    let map_call = Block::new("let task = items.map(|items|")
+        .push_block(constructor)
+        .after(");")
+        .to_owned();
+    Function::new("parse_task")
+        .vis("pub")
+        .arg("runtime", t!("&Runtime"))
+        .arg("parent", t!("&Element"))
+        .ret(t!("Result<Option<Task>, Error>"))
+        .line("let items = parse_items(runtime, parent, None)?;")
+        .push_block(map_call)
+        .line("Ok(task)")
+        .to_owned()
+}
+
 #[cfg(test)]
 mod test {
-    use codegen::{Function, Scope};
+    use codegen::{Function, Scope, Struct};
     use regex::Regex;
 
-    use crate::command::generator::{generate_parse_item, generate_parse_items};
+    use crate::command::generator::generate_parse_task;
+
+    use super::{generate_parse_item, generate_parse_items ,generate_task_struct};
 
     fn function_to_string(item: Function) -> String {
         Scope::new().push_fn(item).to_string()
+    }
+
+    fn struct_to_string(item: Struct) -> String {
+        Scope::new().push_struct(item).to_string()
     }
 
     fn normalize(s: &str) -> String {
@@ -101,6 +138,10 @@ mod test {
 
     fn compare_function(item: Function, expected: &str) {
         assert_eq!(normalize(&function_to_string(item)), normalize(expected))
+    }
+
+    fn compare_struct(item: Struct, expected: &str) {
+        assert_eq!(normalize(&struct_to_string(item)), normalize(expected))
     }
 
     #[test]
@@ -125,7 +166,7 @@ mod test {
     fn parse_items() {
         let item = generate_parse_items();
         const EXPECTED: &str = r#"
-        pub fn parse_items(runtime: &Runtime, parent: &Element, group: Option<&Group>) -> Result<Option<Vec<Item>>, Error> {
+        fn parse_items(runtime: &Runtime, parent: &Element, group: Option<&Group>) -> Result<Option<Vec<Item>>, Error> {
             let condition = evaluate_condition_from_element(runtime, parent)?;
             let items = if condition {
                 let group = Group::create(parent, group, runtime)?;
@@ -156,6 +197,32 @@ mod test {
             Ok(items)
         }
         "#;
+        compare_function(item, EXPECTED);
+    }
+
+    #[test]
+    fn task_struct() {
+        let item = generate_task_struct();
+        const EXPECTED: &str = r#"
+        pub struct Task {
+            pub items: Vec<Item>,
+        }"#;
+        compare_struct(item, EXPECTED);
+    }
+
+    #[test]
+    fn parse_task() {
+        let item = generate_parse_task();
+        const EXPECTED: &str = r#"
+        pub fn parse_task(runtime: &Runtime, parent: &Element) -> Result<Option<Task>, Error> {
+            let items = parse_items(runtime, parent, None)?;
+            let task = items.map(|items| {
+                Task {
+                    items: items
+                }
+            });
+            Ok(task)
+        }"#;
         compare_function(item, EXPECTED);
     }
 }

@@ -5,7 +5,7 @@ use std::{fs::{self, File}, io::{Error, ErrorKind, Read, Result, Write}, path::P
 use codegen::Module;
 use serde::Deserialize;
 
-use self::generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items};
+use self::generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items, generate_task_struct, generate_parse_task};
 
 
 #[derive(Debug, Deserialize)]
@@ -112,15 +112,19 @@ impl PluginDescriptor {
         let group_impl = generate_group_impl(&self.element);
         let item_struct = generate_item_definition(&self.element);
         let item_impl = generate_item_impl(&self.element);
+        let task_struct = generate_task_struct();
         let parse_item_fn = generate_parse_item();
         let parse_items_fn = generate_parse_items();
+        let parse_task_fn = generate_parse_task();
         Module::new(&self.name)
             .push_struct(group_struct)
             .push_impl(group_impl)
             .push_struct(item_struct)
             .push_impl(item_impl)
+            .push_struct(task_struct)
             .push_fn(parse_item_fn)
             .push_fn(parse_items_fn)
+            .push_fn(parse_task_fn)
             .to_owned()
     }
 }
