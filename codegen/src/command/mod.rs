@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use self::generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items, generate_task_struct, generate_parse_task};
 
+pub use generator::generate_task_enum;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]

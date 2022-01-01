@@ -11,6 +11,8 @@ use std::{
 use codegen::{Module, Scope};
 use command::PluginDescriptor;
 
+use crate::command::generate_task_enum;
+
 fn load_commands(base_path: &Path) -> Result<Vec<PluginDescriptor>> {
     if !base_path.is_dir() {
         return Err(Error::new(
@@ -49,5 +51,7 @@ pub fn generate_from_path(source_path: &Path, target_file: &Path) -> Result<()> 
     for module in modules {
         scope.push_module(module);
     }
+    let task_enum = generate_task_enum(&commands);
+    scope.push_enum(task_enum);
     writeln!(target_file, "{}", scope.to_string())
 }
