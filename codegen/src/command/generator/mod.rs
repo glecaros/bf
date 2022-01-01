@@ -1,6 +1,7 @@
 mod group;
 mod item;
 
+use codegen::Variant;
 use codegen::{Block, Function, Type, Enum, Struct};
 
 macro_rules! t {
@@ -9,16 +10,13 @@ macro_rules! t {
     };
 }
 
+use convert_case::{Case, Casing};
 pub use group::generate_group_definition;
 pub use group::generate_group_impl;
 pub use item::generate_item_definition;
 pub use item::generate_item_impl;
 
 use super::PluginDescriptor;
-
-pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
-    todo!()
-}
 
 pub fn generate_parse_item() -> Function {
     let if_block = Block::new("let item = if condition")
@@ -114,14 +112,33 @@ pub fn generate_parse_task() -> Function {
         .to_owned()
 }
 
+fn generate_variant(task: &PluginDescriptor) -> Variant {
+    let pascal_name = task.name.to_case(Case::Pascal);
+    let snake_name = task.name.to_case(Case::Snake);
+    let task_type = format!("{}::Task", snake_name);
+    Variant::new(&pascal_name)
+        .tuple(&task_type)
+        .to_owned()
+}
+
+pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
+    let mut enum_definition = Enum::new("Task")
+        .vis("pub").to_owned();
+    for task in tasks {
+        let variant = generate_variant(&task);
+        enum_definition.push_variant(variant);
+    }
+    enum_definition
+}
+
 #[cfg(test)]
 mod test {
-    use codegen::{Function, Scope, Struct};
+    use codegen::{Function, Scope, Struct, Enum};
     use regex::Regex;
 
-    use crate::command::generator::generate_parse_task;
+    use crate::command::{generator::generate_parse_task, PluginDescriptor, Command, ElementDescriptor};
 
-    use super::{generate_parse_item, generate_parse_items ,generate_task_struct};
+    use super::{generate_parse_item, generate_parse_items ,generate_task_struct, generate_task_enum};
 
     fn function_to_string(item: Function) -> String {
         Scope::new().push_fn(item).to_string()
@@ -129,6 +146,10 @@ mod test {
 
     fn struct_to_string(item: Struct) -> String {
         Scope::new().push_struct(item).to_string()
+    }
+
+    fn enum_to_string(item: Enum) -> String {
+        Scope::new().push_enum(item).to_string()
     }
 
     fn normalize(s: &str) -> String {
@@ -142,6 +163,10 @@ mod test {
 
     fn compare_struct(item: Struct, expected: &str) {
         assert_eq!(normalize(&struct_to_string(item)), normalize(expected))
+    }
+
+    fn compare_enum(item: Enum, expected: &str) {
+        assert_eq!(normalize(&enum_to_string(item)), normalize(expected))
     }
 
     #[test]
@@ -224,5 +249,28 @@ mod test {
             Ok(task)
         }"#;
         compare_function(item, EXPECTED);
+    }
+
+    fn mock_task(name: &str) -> PluginDescriptor {
+        PluginDescriptor {
+            name: String::from(name),
+            command: Command::Snippet(String::from("asdf")),
+            element: ElementDescriptor{
+                tag: String::from(""),
+                attributes: vec!()
+            },
+        }
+    }
+
+    #[test]  
+    fn task_enum() {
+        let tasks = vec!(mock_task("copy"), mock_task("strip"));
+        let enum_definition = generate_task_enum(&tasks);
+        const EXPECTED: &str = r#"
+        pub enum Task {
+            Copy(copy::Task),
+            Strip(strip::Task),
+        }"#;
+        compare_enum(enum_definition, EXPECTED);
     }
 }
