@@ -131,6 +131,49 @@ pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
     enum_definition
 }
 
+fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
+    let mut match_block = Block::new("match task_name");
+    for task in tasks {
+        let name_snake = task.name.to_case(Case::Snake);
+        let name_pascal = task.name.to_case(Case::Pascal);
+        let block = Block::new(&format!("\"{}\" =>", &name_snake))
+            .line(format!("let task = {}::parse_task(runtime, element)?;", &name_snake))
+            .line(format!("Ok(Task::{}(task))", &name_pascal))
+            .after(",")
+            .to_owned();
+        match_block.push_block(block);
+    }
+    match_block
+        .line("_ => Err(Error::from(format!(\"Invalid task '{}'\", task_name))),")
+        .to_owned()
+}
+
+pub fn generate_parse_input(tasks: &Vec<PluginDescriptor>) -> Function {
+    let map_block = Block::new("    .map(|task|")
+        .line("let task_name = task.name();")
+        .push_block(generate_parse_input_match(tasks))
+        .after(")")
+        .to_owned();
+    let filter_map_block = Block::new("    .filter_map(|x| match x")
+        .line("Ok(task) => task.map(|task| Ok(task)),")
+        .line("Err(err) => Some(Err(err)),")
+        .after(")")
+        .to_owned();
+    let parse_input = Function::new("parse_input")
+        .vis("pub")    
+        .arg("runtime", t!("&Runtime"))
+        .arg("input", t!("&str"))
+        .ret(t!("Result<Vec<Task>, Error>"))
+        .line("let xml_elements: Element = input.parse()?;")
+        .line("xml_elements")
+        .line("    .children()")
+        .push_block(map_block)
+        .push_block(filter_map_block)
+        .line("    .collect()")
+        .to_owned();
+    parse_input
+}
+
 #[cfg(test)]
 mod test {
     use codegen::{Function, Scope, Struct, Enum};
@@ -138,7 +181,7 @@ mod test {
 
     use crate::command::{generator::generate_parse_task, PluginDescriptor, Command, ElementDescriptor};
 
-    use super::{generate_parse_item, generate_parse_items ,generate_task_struct, generate_task_enum};
+    use super::{generate_parse_item, generate_parse_items ,generate_task_struct, generate_task_enum, generate_parse_input};
 
     fn function_to_string(item: Function) -> String {
         Scope::new().push_fn(item).to_string()
@@ -272,5 +315,38 @@ mod test {
             Strip(strip::Task),
         }"#;
         compare_enum(enum_definition, EXPECTED);
+    }
+
+    #[test]
+    fn parse_input() {
+        let tasks = vec!(mock_task("copy"), mock_task("strip"));
+        let parse_input_fn = generate_parse_input(&tasks);
+        const EXPECTED: &str = r#"
+        pub fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
+            let xml_elements: Element = input.parse()?;
+            xml_elements
+                .children()
+                .map(|task| {
+                    let task_name = task.name();
+                    match task_name {
+                        "copy" => {
+                            let task = copy::parse_task(runtime, element)?;
+                            Ok(Task::Copy(task))
+                        },
+                        "strip" => {
+                            let task = strip::parse_task(runtime, element)?;
+                            Ok(Task::Strip(task))
+                        },
+                        _ => Err(Error::from(format!("Invalid task '{}'", task_name))),
+                    }
+                })
+                .filter_map(|x| match x {
+                    Ok(task) => task.map(|task| Ok(task)),
+                    Err(err) => Some(Err(err)),
+                })
+                .collect()
+        }
+        "#;
+        compare_function(parse_input_fn, EXPECTED);
     }
 }

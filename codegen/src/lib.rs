@@ -11,9 +11,9 @@ use std::{
 use codegen::{Module, Scope};
 use command::PluginDescriptor;
 
-use crate::command::generate_task_enum;
+use crate::command::{generate_task_enum, generate_parse_input};
 
-fn load_commands(base_path: &Path) -> Result<Vec<PluginDescriptor>> {
+fn load_tasks(base_path: &Path) -> Result<Vec<PluginDescriptor>> {
     if !base_path.is_dir() {
         return Err(Error::new(
             ErrorKind::NotFound,
@@ -44,14 +44,16 @@ fn validate_and_open_target_file(target_file: &Path) -> Result<File> {
 }
 
 pub fn generate_from_path(source_path: &Path, target_file: &Path) -> Result<()> {
-    let commands = load_commands(source_path)?;
+    let tasks = load_tasks(source_path)?;
     let mut target_file = validate_and_open_target_file(target_file)?;
-    let modules: Vec<Module> = commands.iter().map(|command| command.generate()).collect();
+    let modules: Vec<Module> = tasks.iter().map(|command| command.generate()).collect();
+    let task_enum = generate_task_enum(&tasks);
+    let parse_input = generate_parse_input(&tasks);
     let mut scope = Scope::new();
     for module in modules {
         scope.push_module(module);
     }
-    let task_enum = generate_task_enum(&commands);
     scope.push_enum(task_enum);
+    scope.push_fn(parse_input);
     writeln!(target_file, "{}", scope.to_string())
 }
