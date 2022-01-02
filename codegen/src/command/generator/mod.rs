@@ -89,7 +89,7 @@ pub fn generate_parse_items() -> Function {
 pub fn generate_task_struct() -> Struct {
     Struct::new("Task")
         .vis("pub")
-        .field("pub items", t!("Vec<Item>"))
+        .field("items", t!("Vec<Item>"))
         .to_owned()
 }
 
@@ -272,7 +272,7 @@ mod test {
         let item = generate_task_struct();
         const EXPECTED: &str = r#"
         pub struct Task {
-            pub items: Vec<Item>,
+            items: Vec<Item>,
         }"#;
         compare_struct(item, EXPECTED);
     }
