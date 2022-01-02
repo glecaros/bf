@@ -27,7 +27,7 @@ pub fn generate_parse_item() -> Function {
     Function::new("parse_item")
         .arg("runtime", t!("&Runtime"))
         .arg("element", t!("&Element"))
-        .arg("parent", t!("Option<&Group>"))
+        .arg("parent", t!("&Group"))
         .ret(t!("Result<Option<Item>, Error>"))
         .line("let condition = evaluate_condition_from_element(runtime, element)?;")
         .push_block(if_block)
@@ -38,7 +38,7 @@ pub fn generate_parse_item() -> Function {
 
 fn generate_parse_items_loop() -> Block {
     let item_arm = Block::new("\"item\" => ")
-        .line("let item = parse_item(runtime, item, Some(&group))?;")
+        .line("let item = parse_item(runtime, item, &group)?;")
         .push_block(
             Block::new("if let Some(item) = item")
                 .line("items.push(item);")
@@ -137,8 +137,8 @@ fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
         let name_snake = task.name.to_case(Case::Snake);
         let name_pascal = task.name.to_case(Case::Pascal);
         let block = Block::new(&format!("\"{}\" =>", &name_snake))
-            .line(format!("let task = {}::parse_task(runtime, element)?;", &name_snake))
-            .line(format!("Ok(Task::{}(task))", &name_pascal))
+            .line(format!("let task = {}::parse_task(runtime, task)?.map(|task| Task::{}(task));", &name_snake, &name_pascal))
+            .line("Ok(task)")
             .after(",")
             .to_owned();
         match_block.push_block(block);
@@ -160,7 +160,7 @@ pub fn generate_parse_input(tasks: &Vec<PluginDescriptor>) -> Function {
         .after(")")
         .to_owned();
     let parse_input = Function::new("parse_input")
-        .vis("pub")    
+        .vis("pub")
         .arg("runtime", t!("&Runtime"))
         .arg("input", t!("&str"))
         .ret(t!("Result<Vec<Task>, Error>"))
@@ -216,7 +216,7 @@ mod test {
     fn parse_item() {
         let item = generate_parse_item();
         const EXPECTED: &str = r#"
-        fn parse_item(runtime: &Runtime, element: &Element, parent: Option<&Group>) -> Result<Option<Item>, Error> {
+        fn parse_item(runtime: &Runtime, element: &Element, parent: &Group) -> Result<Option<Item>, Error> {
             let condition = evaluate_condition_from_element(runtime, element)?;
             let item = if condition {
                 let item = Item::create(element, parent, runtime)?;
@@ -242,7 +242,7 @@ mod test {
                 for item in parent.children() {
                     match item.name() {
                         "item" => {
-                            let item = parse_item(runtime, item, Some(&group))?;
+                            let item = parse_item(runtime, item, &group)?;
                             if let Some(item) = item {
                                 items.push(item);
                             }
@@ -305,7 +305,7 @@ mod test {
         }
     }
 
-    #[test]  
+    #[test]
     fn task_enum() {
         let tasks = vec!(mock_task("copy"), mock_task("strip"));
         let enum_definition = generate_task_enum(&tasks);
@@ -330,12 +330,12 @@ mod test {
                     let task_name = task.name();
                     match task_name {
                         "copy" => {
-                            let task = copy::parse_task(runtime, element)?;
-                            Ok(Task::Copy(task))
+                            let task = copy::parse_task(runtime, task)?.map(|task| Task::Copy(task));
+                            Ok(task)
                         },
                         "strip" => {
-                            let task = strip::parse_task(runtime, element)?;
-                            Ok(Task::Strip(task))
+                            let task = strip::parse_task(runtime, task)?.map(|task| Task::Strip(task));
+                            Ok(task)
                         },
                         _ => Err(Error::from(format!("Invalid task '{}'", task_name))),
                     }

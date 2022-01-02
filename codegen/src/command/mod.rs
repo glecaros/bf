@@ -107,7 +107,7 @@ impl PluginDescriptor {
                 PluginDescriptor::from_reader(file)
             })
             .collect()
-    } 
+    }
 
     pub fn generate(&self) -> Module {
         let group_struct = generate_group_definition(&self.element);
@@ -119,6 +119,14 @@ impl PluginDescriptor {
         let parse_items_fn = generate_parse_items();
         let parse_task_fn = generate_parse_task();
         Module::new(&self.name)
+            .import("std::path", "PathBuf")
+            .import("minidom", "Element")
+            .import("crate::runtime", "Runtime")
+            .import("crate::error", "Error")
+            .import("crate::util", "interpolate_attribute")
+            .import("crate::util", "ApplyPrefix")
+            .import("crate::util", "evaluate_condition_from_element")
+            .import("crate", "internal_error")
             .push_struct(group_struct)
             .push_impl(group_impl)
             .push_struct(item_struct)
