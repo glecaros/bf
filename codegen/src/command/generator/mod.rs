@@ -160,7 +160,6 @@ pub fn generate_parse_input(tasks: &Vec<PluginDescriptor>) -> Function {
         .after(")")
         .to_owned();
     let parse_input = Function::new("parse_input")
-        .vis("pub")
         .arg("runtime", t!("&Runtime"))
         .arg("input", t!("&str"))
         .ret(t!("Result<Vec<Task>, Error>"))
@@ -322,7 +321,7 @@ mod test {
         let tasks = vec!(mock_task("copy"), mock_task("strip"));
         let parse_input_fn = generate_parse_input(&tasks);
         const EXPECTED: &str = r#"
-        pub fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
+        fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {
             let xml_elements: Element = input.parse()?;
             xml_elements
                 .children()
