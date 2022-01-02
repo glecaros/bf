@@ -45,12 +45,12 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) 
         }
         GroupSetting::Prefix => {
             let prefix = format!(
-                "let {var_name} = if let (Some(group), Some({var_name})) = (parent, {var_name})",
+                "let {var_name} = if let Some({var_name}) = {var_name}",
                 var_name = parameter.name
             );
             let if_block = Block::new(&prefix)
                 .line(format!(
-                    "Some({var_name}).apply_prefix(&group.{var_name})",
+                    "Some({var_name}).apply_prefix(&parent.{var_name})",
                     var_name = parameter.name
                 ))
                 .to_owned();
@@ -62,22 +62,11 @@ fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) 
             function.push_block(else_block);
         }
         GroupSetting::InheritPrefix => {
-            let prefix = format!(
-                "let {var_name} = if let Some(group) = parent",
+            let line = format!(
+                "let {var_name} = {var_name}.apply_prefix(&parent.{var_name});",
                 var_name = parameter.name
             );
-            let if_block = Block::new(&prefix)
-                .line(format!(
-                    "{var_name}.apply_prefix(&group.{var_name})",
-                    var_name = parameter.name
-                ))
-                .to_owned();
-            let else_block = Block::new("else")
-                .line(&parameter.name)
-                .after(";")
-                .to_owned();
-            function.push_block(if_block);
-            function.push_block(else_block);
+            function.line(line);
         }
     }
     if parameter.required {
@@ -250,22 +239,22 @@ mod test {
         impl Item {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = if let (Some(group), Some(src)) = (parent, src) {
-                    Some(src).apply_prefix(&group.src)
+                let src = if let Some(src) = src {
+                    Some(src).apply_prefix(&parent.src)
                 } else {
                     src
                 };
                 let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-                let dst = if let (Some(group), Some(dst)) = (parent, dst) {
-                    Some(dst).apply_prefix(&group.dst)
+                let dst = if let Some(dst) = dst {
+                    Some(dst).apply_prefix(&parent.dst)
                 } else {
                     dst
                 };
                 let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-                let tst = if let (Some(group), Some(tst)) = (parent, tst) {
-                    Some(tst).apply_prefix(&group.tst)
+                let tst = if let Some(tst) = tst {
+                    Some(tst).apply_prefix(&parent.tst)
                 } else {
                     tst
                 };
@@ -293,25 +282,13 @@ mod test {
         impl Item {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = if let Some(group) = parent {
-                    src.apply_prefix(&group.src)
-                } else {
-                    src
-                };
+                let src = src.apply_prefix(&parent.src);
                 let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-                let dst = if let Some(group) = parent {
-                    dst.apply_prefix(&group.dst)
-                } else {
-                    dst
-                };
+                let dst = dst.apply_prefix(&parent.dst);
                 let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-                let tst = if let Some(group) = parent {
-                    tst.apply_prefix(&group.tst)
-                } else {
-                    tst
-                };
+                let tst = tst.apply_prefix(&parent.tst);
                 let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
                 Ok(Item {
                     src: src,
@@ -377,20 +354,20 @@ mod test {
         impl Item {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = if let (Some(group), Some(src)) = (parent, src) {
-                    Some(src).apply_prefix(&group.src)
+                let src = if let Some(src) = src {
+                    Some(src).apply_prefix(&parent.src)
                 } else {
                     src
                 };
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-                let dst = if let (Some(group), Some(dst)) = (parent, dst) {
-                    Some(dst).apply_prefix(&group.dst)
+                let dst = if let Some(dst) = dst {
+                    Some(dst).apply_prefix(&parent.dst)
                 } else {
                     dst
                 };
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-                let tst = if let (Some(group), Some(tst)) = (parent, tst) {
-                    Some(tst).apply_prefix(&group.tst)
+                let tst = if let Some(tst) = tst {
+                    Some(tst).apply_prefix(&parent.tst)
                 } else {
                     tst
                 };
@@ -414,23 +391,11 @@ mod test {
         impl Item {
             pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
                 let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
-                let src = if let Some(group) = parent {
-                    src.apply_prefix(&group.src)
-                } else {
-                    src
-                };
+                let src = src.apply_prefix(&parent.src);
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
-                let dst = if let Some(group) = parent {
-                    dst.apply_prefix(&group.dst)
-                } else {
-                    dst
-                };
+                let dst = dst.apply_prefix(&parent.dst);
                 let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
-                let tst = if let Some(group) = parent {
-                    tst.apply_prefix(&group.tst)
-                } else {
-                    tst
-                };
+                let tst = tst.apply_prefix(&parent.tst);
                 Ok(Item {
                     src: src,
                     dst: dst,
