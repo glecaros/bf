@@ -118,7 +118,6 @@ mod test {
         setting3: GroupSetting,
     ) -> ElementDescriptor {
         ElementDescriptor {
-            tag: String::from("copy"),
             attributes: vec![
                 new_parameter("src", ParameterType::Path, true, setting1),
                 new_parameter("dst", ParameterType::Path, false, setting2),

@@ -1,5 +1,3 @@
-use std::io::BufRead;
-
 use codegen::{Block, Field, Function, Impl, Struct, Type};
 
 use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
@@ -121,7 +119,6 @@ mod test {
         setting3: (GroupSetting, bool),
     ) -> ElementDescriptor {
         ElementDescriptor {
-            tag: String::from("copy"),
             attributes: vec![
                 new_parameter("src", ParameterType::Path, setting1.1, setting1.0),
                 new_parameter("dst", ParameterType::Path, setting2.1, setting2.0),
@@ -384,8 +381,11 @@ mod test {
     #[test]
     fn item_impl_not_required_inherit_prefix() {
         use GroupSetting::*;
-        let descriptor =
-            test_descriptor((InheritPrefix, false), (InheritPrefix, false), (InheritPrefix, false));
+        let descriptor = test_descriptor(
+            (InheritPrefix, false),
+            (InheritPrefix, false),
+            (InheritPrefix, false),
+        );
         let item = super::generate_item_impl(&descriptor);
         const EXPECTED: &str = r#"
         impl Item {

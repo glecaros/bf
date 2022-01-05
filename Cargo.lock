@@ -83,6 +83,7 @@ version = "0.1.0"
 dependencies = [
  "codegen 0.1.3",
  "convert_case",
+ "regex",
  "serde",
  "serde_yaml",
 ]

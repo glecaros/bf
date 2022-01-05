@@ -1,17 +1,22 @@
+use std::io::Result;
 
-struct CommandPart<'a> {
-    tokens: Vec<&'a str>,
-    dependencies: Vec<&'a str>,
-    optional: bool,
+use crate::invalid;
+
+#[derive(Debug)]
+pub struct CommandPart {
+    pub tokens: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub optional: bool,
 }
 
-pub struct CommandDetails<'a> {
-    command_name: &'a str,
-    parts: Vec<CommandPart<'a>>,
+#[derive(Debug)]
+pub struct CommandDetails {
+    pub command_name: String,
+    pub parts: Vec<CommandPart>,
 }
 
-impl<'a> CommandDetails<'a> {
-    fn new(command: &'a str) -> Result<CommandDetails<'a>> {
+impl CommandDetails {
+    pub fn new(command: &str) -> Result<CommandDetails> {
         let (command, arguments) = command
             .split_once(" ").ok_or_else(invalid!("Malformed command definition"))?;
         let mut arguments = arguments.trim();
@@ -20,10 +25,10 @@ impl<'a> CommandDetails<'a> {
             if arguments.starts_with("[") {
                 let index = arguments.find("]").ok_or_else(invalid!("Invalid command definition (mismatched '[')"))?;
                 let part = &arguments[1..index];
-                let tokens: Vec<&str> = part.trim().split(" ").collect();
-                let dependencies: Vec<&str> = tokens.iter().filter_map(|&token| {
+                let tokens: Vec<String> = part.trim().split(" ").map(String::from).collect();
+                let dependencies: Vec<String> = tokens.iter().filter_map(|token| {
                     if token.starts_with("$") {
-                        Some(&token[1..])
+                        Some(String::from(&token[1..]))
                     } else {
                         None
                     }
@@ -41,10 +46,10 @@ impl<'a> CommandDetails<'a> {
                 } else {
                     arguments
                 };
-                let tokens: Vec<&str> = part.trim().split(" ").collect();
-                let dependencies: Vec<&str> = tokens.iter().filter_map(|&token| {
+                let tokens: Vec<String> = part.trim().split(" ").map(String::from).collect();
+                let dependencies: Vec<String> = tokens.iter().filter_map(|token| {
                     if token.starts_with("$") {
-                        Some(&token[1..])
+                        Some(String::from(&token[1..]))
                     } else {
                         None
                     }
@@ -62,13 +67,11 @@ impl<'a> CommandDetails<'a> {
             }
         }
         Ok(CommandDetails{
-            command_name: command,
+            command_name: String::from(command),
             parts: parts
         })
     }
-    
-    
-    // pub write_execute_function()
+
 }
 
 #[cfg(test)]

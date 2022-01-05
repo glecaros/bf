@@ -17,7 +17,7 @@ fn execute() -> Result<(), Error> {
     info!("File parsed successfully, found {} task(s)", tasks.len());
     let _guard = WorkingDirGuard::new(&runtime.working_directory)?;
     for task in &tasks {
-        task.execute(&runtime)?;
+        task.run()?;
     }
     Ok(())
 }

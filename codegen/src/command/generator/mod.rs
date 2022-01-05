@@ -1,22 +1,24 @@
 mod group;
 mod item;
 
-use codegen::Variant;
-use codegen::{Block, Function, Type, Enum, Struct};
+use codegen::{Block, Enum, Function, Struct, Type};
+use codegen::{Impl, Variant};
+use convert_case::{Case, Casing};
+use regex::Regex;
+
+pub use group::generate_group_definition;
+pub use group::generate_group_impl;
+pub use item::generate_item_definition;
+pub use item::generate_item_impl;
+
+use super::command_parser::CommandPart;
+use super::{CommandLineDescriptor, PluginDescriptor};
 
 macro_rules! t {
     ($ty:literal) => {
         Type::new($ty)
     };
 }
-
-use convert_case::{Case, Casing};
-pub use group::generate_group_definition;
-pub use group::generate_group_impl;
-pub use item::generate_item_definition;
-pub use item::generate_item_impl;
-
-use super::PluginDescriptor;
 
 pub fn generate_parse_item() -> Function {
     let if_block = Block::new("let item = if condition")
@@ -93,10 +95,115 @@ pub fn generate_task_struct() -> Struct {
         .to_owned()
 }
 
-pub fn generate_parse_task() -> Function {
-    let constructor = Block::new("Task")
-        .line("items: items")
+pub fn generate_task_impl(task: &PluginDescriptor) -> Impl {
+    let snake_name = task.name.to_case(Case::Snake);
+    let for_block = Block::new("for item in &self.items")
+        .line(format!("{}(item)?;", snake_name))
         .to_owned();
+    let run_fn = Function::new("run")
+        .vis("pub")
+        .arg_ref_self()
+        .ret(t!("Result<(), Error>"))
+        .push_block(for_block)
+        .line("Ok(())")
+        .to_owned();
+    Impl::new("Task").push_fn(run_fn).to_owned()
+}
+
+fn add_command_part_handling(function: &mut Function, part: &CommandPart) {
+    if part.optional {
+        let lhs = part
+            .dependencies
+            .iter()
+            .map(|dep| format!("Some({})", dep))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let rhs = part
+            .dependencies
+            .iter()
+            .map(|dep| format!("&item.{}", dep))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let if_stmt = if part.dependencies.len() > 1 {
+            format!("if let ({}) = ({})", lhs, rhs)
+        } else {
+            format!("if let {} = {}", lhs, rhs)
+        };
+        let mut block = Block::new(&if_stmt);
+        for token in &part.tokens {
+            if token.starts_with("$") {
+                block.line(format!("call.arg(&{});", &token[1..]));
+            } else {
+                block.line(format!("call.arg(\"{}\");", &token));
+            };
+        }
+        function.push_block(block);
+    } else {
+        for token in &part.tokens {
+            if token.starts_with("$") {
+                function.line(format!("call.arg(&item.{});", &token[1..]));
+            } else {
+                function.line(format!("call.arg(\"{}\");", &token));
+            };
+        }
+    }
+}
+
+fn generate_command_line_execute(
+    descriptor: &CommandLineDescriptor,
+    mut function: Function,
+) -> Function {
+    let command = if cfg!(target_os = "windows") {
+        &descriptor.windows
+    } else if cfg!(target_os = "linux") {
+        &descriptor.linux
+    } else if cfg!(target_os = "macos") {
+        &descriptor.osx
+    } else {
+        panic!("Unsupported OS")
+    };
+    function.line("use std::process::Command;");
+    function.line(format!(
+        "let mut call = Command::new(\"{}\");",
+        &command.command_name
+    ));
+    for part in &command.parts {
+        add_command_part_handling(&mut function, part);
+    }
+    function
+        .line("let output = call.output()?;")
+        .line("let status = output.status;")
+        .push_block(Block::new("if status.success()").line("Ok(())").to_owned())
+        .push_block(
+            Block::new("else")
+                .line("let std_err = std::str::from_utf8(&output.stderr)?;")
+                .line("Err(Error::from(std_err))")
+                .to_owned(),
+        )
+        .to_owned()
+}
+
+pub fn generate_execute_fn(task: &PluginDescriptor) -> Function {
+    let snake_name = task.name.to_case(Case::Snake);
+    let mut execute_fn = Function::new(&snake_name)
+        .arg("item", t!("&Item"))
+        .ret(t!("Result<(), Error>"))
+        .to_owned();
+    use super::Command;
+    match &task.command {
+        Command::Snippet(code) => {
+            let re = Regex::new(r"\$\{(?P<var>[a-z][a-z0-9_]*)\}").unwrap();
+            let output = re.replace_all(&code, "&item.$var");
+            execute_fn.line(&output).to_owned()
+        }
+        Command::CommandLine(command_line) => {
+            generate_command_line_execute(&command_line, execute_fn)
+        }
+    }
+}
+
+pub fn generate_parse_task() -> Function {
+    let constructor = Block::new("Task").line("items: items").to_owned();
     let map_call = Block::new("let task = items.map(|items|")
         .push_block(constructor)
         .after(");")
@@ -116,19 +223,34 @@ fn generate_variant(task: &PluginDescriptor) -> Variant {
     let pascal_name = task.name.to_case(Case::Pascal);
     let snake_name = task.name.to_case(Case::Snake);
     let task_type = format!("{}::Task", snake_name);
-    Variant::new(&pascal_name)
-        .tuple(&task_type)
-        .to_owned()
+    Variant::new(&pascal_name).tuple(&task_type).to_owned()
 }
 
 pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
-    let mut enum_definition = Enum::new("Task")
-        .vis("pub").to_owned();
+    let mut enum_definition = Enum::new("Task").vis("pub").to_owned();
     for task in tasks {
         let variant = generate_variant(&task);
         enum_definition.push_variant(variant);
     }
     enum_definition
+}
+
+pub fn generate_task_enum_impl(tasks: &Vec<PluginDescriptor>) -> Impl {
+    let mut match_block = Block::new("match &self");
+    for task in tasks {
+        let snake_name = task.name.to_case(Case::Snake);
+        let pascal_name = task.name.to_case(Case::Pascal);
+        match_block.line(format!("Task::{pascal}({snake}) => {snake}.run(),", snake = snake_name, pascal = pascal_name));
+    }
+    let run_fn = Function::new("run")
+        .vis("pub")
+        .arg_ref_self()
+        .ret(t!("Result<(), Error>"))
+        .push_block(match_block)
+        .to_owned();
+    Impl::new("Task")
+        .push_fn(run_fn)
+        .to_owned()
 }
 
 fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
@@ -137,7 +259,10 @@ fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
         let name_snake = task.name.to_case(Case::Snake);
         let name_pascal = task.name.to_case(Case::Pascal);
         let block = Block::new(&format!("\"{}\" =>", &name_snake))
-            .line(format!("let task = {}::parse_task(runtime, task)?.map(|task| Task::{}(task));", &name_snake, &name_pascal))
+            .line(format!(
+                "let task = {}::parse_task(runtime, task)?.map(|task| Task::{}(task));",
+                &name_snake, &name_pascal
+            ))
             .line("Ok(task)")
             .after(",")
             .to_owned();
@@ -175,12 +300,17 @@ pub fn generate_parse_input(tasks: &Vec<PluginDescriptor>) -> Function {
 
 #[cfg(test)]
 mod test {
-    use codegen::{Function, Scope, Struct, Enum};
+    use codegen::{Enum, Function, Impl, Scope, Struct};
     use regex::Regex;
 
-    use crate::command::{generator::generate_parse_task, PluginDescriptor, Command, ElementDescriptor};
+    use crate::command::{
+        generator::generate_parse_task, Command, ElementDescriptor, PluginDescriptor,
+    };
 
-    use super::{generate_parse_item, generate_parse_items ,generate_task_struct, generate_task_enum, generate_parse_input};
+    use super::{
+        generate_parse_input, generate_parse_item, generate_parse_items, generate_task_enum,
+        generate_task_impl, generate_task_struct, generate_task_enum_impl,
+    };
 
     fn function_to_string(item: Function) -> String {
         Scope::new().push_fn(item).to_string()
@@ -192,6 +322,10 @@ mod test {
 
     fn enum_to_string(item: Enum) -> String {
         Scope::new().push_enum(item).to_string()
+    }
+
+    fn impl_to_string(item: Impl) -> String {
+        Scope::new().push_impl(item).to_string()
     }
 
     fn normalize(s: &str) -> String {
@@ -209,6 +343,20 @@ mod test {
 
     fn compare_enum(item: Enum, expected: &str) {
         assert_eq!(normalize(&enum_to_string(item)), normalize(expected))
+    }
+
+    fn compare_impl(item: Impl, expected: &str) {
+        assert_eq!(normalize(&impl_to_string(item)), normalize(expected))
+    }
+
+    fn mock_task(name: &str) -> PluginDescriptor {
+        PluginDescriptor {
+            name: String::from(name),
+            command: Command::Snippet(String::from("asdf")),
+            element: ElementDescriptor {
+                attributes: vec![],
+            },
+        }
     }
 
     #[test]
@@ -278,6 +426,23 @@ mod test {
     }
 
     #[test]
+    fn task_impl() {
+        let copy = mock_task("copy");
+        let item = generate_task_impl(&copy);
+        const EXPECTED: &str = r#"
+        impl Task {
+            pub fn run(&self) -> Result<(), Error> {
+                for item in &self.items {
+                    copy(item)?;
+                }
+                Ok(())
+            }
+        }
+        "#;
+        compare_impl(item, EXPECTED);
+    }
+
+    #[test]
     fn parse_task() {
         let item = generate_parse_task();
         const EXPECTED: &str = r#"
@@ -293,20 +458,9 @@ mod test {
         compare_function(item, EXPECTED);
     }
 
-    fn mock_task(name: &str) -> PluginDescriptor {
-        PluginDescriptor {
-            name: String::from(name),
-            command: Command::Snippet(String::from("asdf")),
-            element: ElementDescriptor{
-                tag: String::from(""),
-                attributes: vec!()
-            },
-        }
-    }
-
     #[test]
     fn task_enum() {
-        let tasks = vec!(mock_task("copy"), mock_task("strip"));
+        let tasks = vec![mock_task("copy"), mock_task("strip")];
         let enum_definition = generate_task_enum(&tasks);
         const EXPECTED: &str = r#"
         pub enum Task {
@@ -317,8 +471,24 @@ mod test {
     }
 
     #[test]
+    fn task_enum_impl() {
+        let tasks = vec![mock_task("copy"), mock_task("strip")];
+        let impl_definition = generate_task_enum_impl(&tasks);
+        const EXPECTED: &str = r#"
+        impl Task {
+            pub fn run(&self) -> Result<(), Error> {
+                match &self {
+                    Task::Copy(copy) => copy.run(),
+                    Task::Strip(strip) => strip.run(),
+                }
+            }
+        }"#;
+        compare_impl(impl_definition, EXPECTED);
+    }
+
+    #[test]
     fn parse_input() {
-        let tasks = vec!(mock_task("copy"), mock_task("strip"));
+        let tasks = vec![mock_task("copy"), mock_task("strip")];
         let parse_input_fn = generate_parse_input(&tasks);
         const EXPECTED: &str = r#"
         fn parse_input(runtime: &Runtime, input: &str) -> Result<Vec<Task>, Error> {

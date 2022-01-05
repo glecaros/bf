@@ -17,4 +17,4 @@ element:
     - name: destination
       type: path
       allow_group: inherit_prefix
-      required: false
+      required: true
