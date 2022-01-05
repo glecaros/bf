@@ -27,19 +27,6 @@ impl Drop for WorkingDirGuard {
     }
 }
 
-pub fn interpolate_text(element: &Element, runtime: &Runtime) -> Result<Option<String>, Error> {
-    if element.children().count() > 0 {
-        Err(Error::from("Malformed item"))
-    } else {
-        let text = element.text();
-        if text.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(interpolate(&text, &runtime.variables)?))
-        }
-    }
-}
-
 pub const ATTR_CONDITION: &str = "condition";
 
 pub fn interpolate_attribute(name: &str, element: &Element, runtime: &Runtime) -> Result<Option<String>, Error> {

@@ -1,4 +1,3 @@
-mod commands;
 mod error;
 mod input;
 mod interpolation;
