@@ -15,7 +15,9 @@ fn generate_field_definition(parameter: &ParameterDescriptor) -> Field {
 }
 
 pub fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struct {
-    let mut struct_definition = Struct::new("Item");
+    let mut struct_definition = Struct::new("Item")
+        .derive("Debug")
+        .to_owned();
     for attribute in &element_descriptor.attributes {
         let field = generate_field_definition(attribute);
         struct_definition.push_field(field);
@@ -154,6 +156,7 @@ mod test {
         let descriptor = test_descriptor((None, true), (None, true), (None, true));
         let item = super::generate_item_definition(&descriptor);
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         struct Item {
             src: PathBuf,
             dst: PathBuf,
@@ -168,6 +171,7 @@ mod test {
         let descriptor = test_descriptor((None, false), (None, false), (None, false));
         let item = super::generate_item_definition(&descriptor);
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         struct Item {
             src: Option<PathBuf>,
             dst: Option<PathBuf>,

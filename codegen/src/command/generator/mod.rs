@@ -90,6 +90,7 @@ pub fn generate_parse_items() -> Function {
 
 pub fn generate_task_struct() -> Struct {
     Struct::new("Task")
+        .derive("Debug")
         .vis("pub")
         .field("items", t!("Vec<Item>"))
         .to_owned()
@@ -227,7 +228,7 @@ fn generate_variant(task: &PluginDescriptor) -> Variant {
 }
 
 pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
-    let mut enum_definition = Enum::new("Task").vis("pub").to_owned();
+    let mut enum_definition = Enum::new("Task").derive("Debug").vis("pub").to_owned();
     for task in tasks {
         let variant = generate_variant(&task);
         enum_definition.push_variant(variant);
@@ -240,7 +241,11 @@ pub fn generate_task_enum_impl(tasks: &Vec<PluginDescriptor>) -> Impl {
     for task in tasks {
         let snake_name = task.name.to_case(Case::Snake);
         let pascal_name = task.name.to_case(Case::Pascal);
-        match_block.line(format!("Task::{pascal}({snake}) => {snake}.run(),", snake = snake_name, pascal = pascal_name));
+        match_block.line(format!(
+            "Task::{pascal}({snake}) => {snake}.run(),",
+            snake = snake_name,
+            pascal = pascal_name
+        ));
     }
     let run_fn = Function::new("run")
         .vis("pub")
@@ -248,9 +253,7 @@ pub fn generate_task_enum_impl(tasks: &Vec<PluginDescriptor>) -> Impl {
         .ret(t!("Result<(), Error>"))
         .push_block(match_block)
         .to_owned();
-    Impl::new("Task")
-        .push_fn(run_fn)
-        .to_owned()
+    Impl::new("Task").push_fn(run_fn).to_owned()
 }
 
 fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
@@ -309,7 +312,7 @@ mod test {
 
     use super::{
         generate_parse_input, generate_parse_item, generate_parse_items, generate_task_enum,
-        generate_task_impl, generate_task_struct, generate_task_enum_impl,
+        generate_task_enum_impl, generate_task_impl, generate_task_struct,
     };
 
     fn function_to_string(item: Function) -> String {
@@ -353,9 +356,7 @@ mod test {
         PluginDescriptor {
             name: String::from(name),
             command: Command::Snippet(String::from("asdf")),
-            element: ElementDescriptor {
-                attributes: vec![],
-            },
+            element: ElementDescriptor { attributes: vec![] },
         }
     }
 
@@ -419,6 +420,7 @@ mod test {
     fn task_struct() {
         let item = generate_task_struct();
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         pub struct Task {
             items: Vec<Item>,
         }"#;
@@ -463,6 +465,7 @@ mod test {
         let tasks = vec![mock_task("copy"), mock_task("strip")];
         let enum_definition = generate_task_enum(&tasks);
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         pub enum Task {
             Copy(copy::Task),
             Strip(strip::Task),

@@ -16,7 +16,9 @@ fn generate_field_definition(parameter: &ParameterDescriptor) -> Option<Field> {
 }
 
 pub fn generate_group_definition(element_descriptor: &ElementDescriptor) -> Struct {
-    let mut struct_definition = Struct::new("Group");
+    let mut struct_definition = Struct::new("Group")
+        .derive("Debug")
+        .to_owned();
     for attribute in &element_descriptor.attributes {
         let field = generate_field_definition(attribute);
         if let Some(field) = field {
@@ -152,7 +154,9 @@ mod test {
         use GroupSetting::*;
         let descriptor = test_descriptor(None, None, None);
         let item = super::generate_group_definition(&descriptor);
-        const EXPECTED: &str = "struct Group;";
+        const EXPECTED: &str = r#"
+        #[derive(Debug)]
+        struct Group;"#;
         compare_struct(item, EXPECTED);
     }
 
@@ -162,6 +166,7 @@ mod test {
         let descriptor = test_descriptor(Inherit, Inherit, Inherit);
         let item = super::generate_group_definition(&descriptor);
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         struct Group {
             src: Option<PathBuf>,
             dst: Option<PathBuf>,
@@ -176,6 +181,7 @@ mod test {
         let descriptor = test_descriptor(Inherit, None, Inherit);
         let item = super::generate_group_definition(&descriptor);
         const EXPECTED: &str = r#"
+        #[derive(Debug)]
         struct Group {
             src: Option<PathBuf>,
             tst: Option<PathBuf>,
