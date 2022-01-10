@@ -111,6 +111,7 @@ mod test {
             parameter_type: parameter_type,
             required: required,
             allow_group: allow_group,
+            defaults_to: None,
         }
     }
 

@@ -27,16 +27,26 @@ pub fn generate_item_definition(element_descriptor: &ElementDescriptor) -> Struc
 
 fn add_parameter_code(function: &mut Function, parameter: &ParameterDescriptor) {
     let conversion_suffix = match &parameter.parameter_type {
-        ParameterType::Path => ".map(PathBuf::from);",
+        ParameterType::Path => ".map(PathBuf::from)",
     };
     let init_line = format!(
-        r#"let {var_name} = interpolate_attribute("{var_name}", element, runtime)?{suffix}"#,
+        r#"let {var_name} = interpolate_attribute("{var_name}", element, runtime)?{suffix};"#,
         var_name = parameter.name,
         suffix = conversion_suffix
     );
     function.line(init_line);
+    if let Some(attribute) = &parameter.defaults_to {
+        let default_line = format!(
+            r#"let {var_name} = {var_name}.or(interpolate_attribute("{attribute}", element, runtime)?{suffix});"#,
+            var_name = parameter.name,
+            attribute = attribute,
+            suffix = conversion_suffix
+        );
+        function.line(default_line);
+    }
     match parameter.allow_group {
-        GroupSetting::None => (),
+        GroupSetting::None => {
+        },
         GroupSetting::Inherit => {
             function.line(format!(
                 "let {var_name} = {var_name}.or(parent.{var_name});",
@@ -112,6 +122,7 @@ mod test {
             parameter_type: parameter_type,
             required: required,
             allow_group: allow_group,
+            defaults_to: None,
         }
     }
 
@@ -247,6 +258,47 @@ mod test {
                 };
                 let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
                 let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = if let Some(dst) = dst {
+                    Some(dst).apply_prefix(&parent.dst)
+                } else {
+                    dst
+                };
+                let dst = dst.ok_or(Error::from("Missing required value: 'dst'"))?;
+                let tst = interpolate_attribute("tst", element, runtime)?.map(PathBuf::from);
+                let tst = if let Some(tst) = tst {
+                    Some(tst).apply_prefix(&parent.tst)
+                } else {
+                    tst
+                };
+                let tst = tst.ok_or(Error::from("Missing required value: 'tst'"))?;
+                Ok(Item {
+                    src: src,
+                    dst: dst,
+                    tst: tst,
+                })
+            }
+        }"#;
+        compare_impl(item, EXPECTED);
+    }
+
+    #[test]
+    fn item_impl_required_prefix_defaults_to_attribute() {
+        use GroupSetting::*;
+        let mut descriptor = test_descriptor((Prefix, true), (Prefix, true), (Prefix, true));
+        descriptor.attributes[1].defaults_to = Some(String::from("src"));
+        let item = super::generate_item_impl(&descriptor);
+        const EXPECTED: &str = r#"
+        impl Item {
+            pub fn create(element: &Element, parent: &Group, runtime: &Runtime) -> Result<Item, Error> {
+                let src = interpolate_attribute("src", element, runtime)?.map(PathBuf::from);
+                let src = if let Some(src) = src {
+                    Some(src).apply_prefix(&parent.src)
+                } else {
+                    src
+                };
+                let src = src.ok_or(Error::from("Missing required value: 'src'"))?;
+                let dst = interpolate_attribute("dst", element, runtime)?.map(PathBuf::from);
+                let dst = dst.or(interpolate_attribute("src", element, runtime)?.map(PathBuf::from));
                 let dst = if let Some(dst) = dst {
                     Some(dst).apply_prefix(&parent.dst)
                 } else {

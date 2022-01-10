@@ -44,6 +44,7 @@ pub struct ParameterDescriptor {
     #[serde(rename = "type")]
     parameter_type: ParameterType,
     allow_group: GroupSetting,
+    defaults_to: Option<String>,
     required: bool,
 }
 
