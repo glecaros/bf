@@ -11,8 +11,9 @@ pub use group::generate_group_impl;
 pub use item::generate_item_definition;
 pub use item::generate_item_impl;
 
+use crate::command::{TaskDescriptor, CommandLineDescriptor, Command};
+
 use super::command_parser::CommandPart;
-use super::{CommandLineDescriptor, TaskDescriptor};
 
 macro_rules! t {
     ($ty:literal) => {
@@ -190,7 +191,6 @@ pub fn generate_execute_fn(task: &TaskDescriptor) -> Function {
         .arg("item", t!("&Item"))
         .ret(t!("Result<(), Error>"))
         .to_owned();
-    use super::Command;
     match &task.command {
         Command::Snippet(code) => {
             let re = Regex::new(r"\$\{(?P<var>[a-z][a-z0-9_]*)\}").unwrap();
@@ -306,9 +306,9 @@ mod test {
     use codegen::{Enum, Function, Impl, Scope, Struct};
     use regex::Regex;
 
-    use crate::command::{
-        generator::generate_parse_task, Command, ElementDescriptor, TaskDescriptor,
-    };
+    use crate::{command::{
+        Command, ElementDescriptor, TaskDescriptor,
+    }, generator::generate_parse_task};
 
     use super::{
         generate_parse_input, generate_parse_item, generate_parse_items, generate_task_enum,

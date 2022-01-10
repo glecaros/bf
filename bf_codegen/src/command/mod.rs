@@ -1,6 +1,3 @@
-mod command_parser;
-mod generator;
-
 use std::{
     fs::{self, File},
     io::{Error, ErrorKind, Read, Result},
@@ -10,18 +7,7 @@ use std::{
 use codegen::Module;
 use serde::{de::Visitor, Deserialize, Deserializer};
 
-use self::{
-    command_parser::CommandDetails,
-    generator::{
-        generate_execute_fn, generate_group_definition, generate_group_impl,
-        generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items,
-        generate_parse_task, generate_task_impl, generate_task_struct,
-    },
-};
-
-pub use generator::generate_parse_input;
-pub use generator::generate_task_enum;
-pub use generator::generate_task_enum_impl;
+use crate::{command_parser::CommandDetails, generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_task_struct, generate_parse_task, generate_parse_items, generate_parse_item, generate_task_impl, generate_execute_fn}};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -40,12 +26,12 @@ pub enum GroupSetting {
 
 #[derive(Debug, Deserialize)]
 pub struct ParameterDescriptor {
-    name: String,
+    pub name: String,
     #[serde(rename = "type")]
-    parameter_type: ParameterType,
-    allow_group: GroupSetting,
-    defaults_to: Option<String>,
-    required: bool,
+    pub parameter_type: ParameterType,
+    pub allow_group: GroupSetting,
+    pub defaults_to: Option<String>,
+    pub required: bool,
 }
 
 #[macro_export]
@@ -92,11 +78,11 @@ where
 #[derive(Debug, Deserialize)]
 pub struct CommandLineDescriptor {
     #[serde(deserialize_with = "parse_command")]
-    linux: CommandDetails,
+    pub linux: CommandDetails,
     #[serde(deserialize_with = "parse_command")]
-    windows: CommandDetails,
+    pub windows: CommandDetails,
     #[serde(deserialize_with = "parse_command")]
-    osx: CommandDetails,
+    pub osx: CommandDetails,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,11 +94,11 @@ pub enum Command {
 
 #[derive(Debug, Deserialize)]
 pub struct ElementDescriptor {
-    attributes: Vec<ParameterDescriptor>,
+    pub attributes: Vec<ParameterDescriptor>,
 }
 
 impl ElementDescriptor {
-    fn uses_groups(&self) -> bool {
+    pub fn uses_groups(&self) -> bool {
         let allows_group = |parameter_descriptor: &ParameterDescriptor| -> bool {
             match parameter_descriptor.allow_group {
                 GroupSetting::None => false,
@@ -130,9 +116,9 @@ impl ElementDescriptor {
 
 #[derive(Debug, Deserialize)]
 pub struct TaskDescriptor {
-    name: String,
-    command: Command,
-    element: ElementDescriptor,
+    pub name: String,
+    pub command: Command,
+    pub element: ElementDescriptor,
 }
 
 impl TaskDescriptor {

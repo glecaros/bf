@@ -1,6 +1,6 @@
 use codegen::{Block, Field, Function, Impl, Struct, Type};
 
-use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
+use crate::command::{ParameterDescriptor, GroupSetting, ParameterType, ElementDescriptor};
 
 fn generate_field_definition(parameter: &ParameterDescriptor) -> Option<Field> {
     match parameter.allow_group {
