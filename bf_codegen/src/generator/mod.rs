@@ -1,5 +1,7 @@
 mod group;
 mod item;
+#[cfg(test)]
+mod test_utils;
 
 use codegen::{Block, Enum, Function, Struct, Type};
 use codegen::{Impl, Variant};
@@ -11,7 +13,7 @@ pub use group::generate_group_impl;
 pub use item::generate_item_definition;
 pub use item::generate_item_impl;
 
-use crate::command::{TaskDescriptor, CommandLineDescriptor, Command};
+use crate::command::{Command, CommandLineDescriptor, TaskDescriptor};
 
 use super::command_parser::CommandPart;
 
@@ -303,54 +305,15 @@ pub fn generate_parse_input(tasks: &Vec<TaskDescriptor>) -> Function {
 
 #[cfg(test)]
 mod test {
-    use codegen::{Enum, Function, Impl, Scope, Struct};
-    use regex::Regex;
-
-    use crate::{command::{
-        Command, ElementDescriptor, TaskDescriptor,
-    }, generator::generate_parse_task};
+    use crate::{
+        command::{Command, ElementDescriptor, TaskDescriptor},
+        generator::{generate_parse_task, test_utils},
+    };
 
     use super::{
         generate_parse_input, generate_parse_item, generate_parse_items, generate_task_enum,
         generate_task_enum_impl, generate_task_impl, generate_task_struct,
     };
-
-    fn function_to_string(item: Function) -> String {
-        Scope::new().push_fn(item).to_string()
-    }
-
-    fn struct_to_string(item: Struct) -> String {
-        Scope::new().push_struct(item).to_string()
-    }
-
-    fn enum_to_string(item: Enum) -> String {
-        Scope::new().push_enum(item).to_string()
-    }
-
-    fn impl_to_string(item: Impl) -> String {
-        Scope::new().push_impl(item).to_string()
-    }
-
-    fn normalize(s: &str) -> String {
-        let regex = Regex::new("[\\n\\s]+").unwrap();
-        regex.replace_all(s.trim(), " ").to_string()
-    }
-
-    fn compare_function(item: Function, expected: &str) {
-        assert_eq!(normalize(&function_to_string(item)), normalize(expected))
-    }
-
-    fn compare_struct(item: Struct, expected: &str) {
-        assert_eq!(normalize(&struct_to_string(item)), normalize(expected))
-    }
-
-    fn compare_enum(item: Enum, expected: &str) {
-        assert_eq!(normalize(&enum_to_string(item)), normalize(expected))
-    }
-
-    fn compare_impl(item: Impl, expected: &str) {
-        assert_eq!(normalize(&impl_to_string(item)), normalize(expected))
-    }
 
     fn mock_task(name: &str) -> TaskDescriptor {
         TaskDescriptor {
@@ -375,7 +338,7 @@ mod test {
             Ok(item)
         }
         "#;
-        compare_function(item, EXPECTED);
+        test_utils::compare_function(item, EXPECTED);
     }
 
     #[test]
@@ -413,7 +376,7 @@ mod test {
             Ok(items)
         }
         "#;
-        compare_function(item, EXPECTED);
+        test_utils::compare_function(item, EXPECTED);
     }
 
     #[test]
@@ -424,7 +387,7 @@ mod test {
         pub struct Task {
             items: Vec<Item>,
         }"#;
-        compare_struct(item, EXPECTED);
+        test_utils::compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -441,7 +404,7 @@ mod test {
             }
         }
         "#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -457,7 +420,7 @@ mod test {
             });
             Ok(task)
         }"#;
-        compare_function(item, EXPECTED);
+        test_utils::compare_function(item, EXPECTED);
     }
 
     #[test]
@@ -470,7 +433,7 @@ mod test {
             Copy(copy::Task),
             Strip(strip::Task),
         }"#;
-        compare_enum(enum_definition, EXPECTED);
+        test_utils::compare_enum(enum_definition, EXPECTED);
     }
 
     #[test]
@@ -486,7 +449,7 @@ mod test {
                 }
             }
         }"#;
-        compare_impl(impl_definition, EXPECTED);
+        test_utils::compare_impl(impl_definition, EXPECTED);
     }
 
     #[test]
@@ -519,6 +482,6 @@ mod test {
                 .collect()
         }
         "#;
-        compare_function(parse_input_fn, EXPECTED);
+        test_utils::compare_function(parse_input_fn, EXPECTED);
     }
 }

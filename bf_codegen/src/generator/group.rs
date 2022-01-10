@@ -1,6 +1,6 @@
 use codegen::{Block, Field, Function, Impl, Struct, Type};
 
-use crate::command::{ParameterDescriptor, GroupSetting, ParameterType, ElementDescriptor};
+use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
 
 fn generate_field_definition(parameter: &ParameterDescriptor) -> Option<Field> {
     match parameter.allow_group {
@@ -16,9 +16,7 @@ fn generate_field_definition(parameter: &ParameterDescriptor) -> Option<Field> {
 }
 
 pub fn generate_group_definition(element_descriptor: &ElementDescriptor) -> Struct {
-    let mut struct_definition = Struct::new("Group")
-        .derive("Debug")
-        .to_owned();
+    let mut struct_definition = Struct::new("Group").derive("Debug").to_owned();
     for attribute in &element_descriptor.attributes {
         let field = generate_field_definition(attribute);
         if let Some(field) = field {
@@ -95,10 +93,10 @@ pub fn generate_group_impl(element_descriptor: &ElementDescriptor) -> Impl {
 
 #[cfg(test)]
 mod test {
-    use codegen::{Impl, Scope, Struct};
-    use regex::Regex;
-
-    use crate::command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType};
+    use crate::{
+        command::{ElementDescriptor, GroupSetting, ParameterDescriptor, ParameterType},
+        generator::test_utils,
+    };
 
     fn new_parameter(
         name: &str,
@@ -129,27 +127,6 @@ mod test {
         }
     }
 
-    fn struct_to_string(item: Struct) -> String {
-        Scope::new().push_struct(item).to_string()
-    }
-
-    fn impl_to_string(item: Impl) -> String {
-        Scope::new().push_impl(item).to_string()
-    }
-
-    fn normalize(s: &str) -> String {
-        let regex = Regex::new("[\\n\\s]+").unwrap();
-        regex.replace_all(s.trim(), " ").to_string()
-    }
-
-    fn compare_struct(item: Struct, expected: &str) {
-        assert_eq!(normalize(&struct_to_string(item)), normalize(expected))
-    }
-
-    fn compare_impl(item: Impl, expected: &str) {
-        assert_eq!(normalize(&impl_to_string(item)), normalize(expected))
-    }
-
     #[test]
     fn group_none() {
         use GroupSetting::*;
@@ -158,7 +135,7 @@ mod test {
         const EXPECTED: &str = r#"
         #[derive(Debug)]
         struct Group;"#;
-        compare_struct(item, EXPECTED);
+        test_utils::compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -173,7 +150,7 @@ mod test {
             dst: Option<PathBuf>,
             tst: Option<PathBuf>,
         }"#;
-        compare_struct(item, EXPECTED);
+        test_utils::compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -187,7 +164,7 @@ mod test {
             src: Option<PathBuf>,
             tst: Option<PathBuf>,
         }"#;
-        compare_struct(item, EXPECTED);
+        test_utils::compare_struct(item, EXPECTED);
     }
 
     #[test]
@@ -201,7 +178,7 @@ mod test {
                 Ok(Group{})
             }
         }"#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -225,7 +202,7 @@ mod test {
                 })
             }
         }"#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -261,7 +238,7 @@ mod test {
                 })
             }
         }"#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -297,7 +274,7 @@ mod test {
                 })
             }
         }"#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 
     #[test]
@@ -329,6 +306,6 @@ mod test {
                 })
             }
         }"#;
-        compare_impl(item, EXPECTED);
+        test_utils::compare_impl(item, EXPECTED);
     }
 }
