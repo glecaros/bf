@@ -12,7 +12,7 @@ pub use item::generate_item_definition;
 pub use item::generate_item_impl;
 
 use super::command_parser::CommandPart;
-use super::{CommandLineDescriptor, PluginDescriptor};
+use super::{CommandLineDescriptor, TaskDescriptor};
 
 macro_rules! t {
     ($ty:literal) => {
@@ -96,7 +96,7 @@ pub fn generate_task_struct() -> Struct {
         .to_owned()
 }
 
-pub fn generate_task_impl(task: &PluginDescriptor) -> Impl {
+pub fn generate_task_impl(task: &TaskDescriptor) -> Impl {
     let snake_name = task.name.to_case(Case::Snake);
     let for_block = Block::new("for item in &self.items")
         .line(format!("{}(item)?;", snake_name))
@@ -184,7 +184,7 @@ fn generate_command_line_execute(
         .to_owned()
 }
 
-pub fn generate_execute_fn(task: &PluginDescriptor) -> Function {
+pub fn generate_execute_fn(task: &TaskDescriptor) -> Function {
     let snake_name = task.name.to_case(Case::Snake);
     let mut execute_fn = Function::new(&snake_name)
         .arg("item", t!("&Item"))
@@ -220,14 +220,14 @@ pub fn generate_parse_task() -> Function {
         .to_owned()
 }
 
-fn generate_variant(task: &PluginDescriptor) -> Variant {
+fn generate_variant(task: &TaskDescriptor) -> Variant {
     let pascal_name = task.name.to_case(Case::Pascal);
     let snake_name = task.name.to_case(Case::Snake);
     let task_type = format!("{}::Task", snake_name);
     Variant::new(&pascal_name).tuple(&task_type).to_owned()
 }
 
-pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
+pub fn generate_task_enum(tasks: &Vec<TaskDescriptor>) -> Enum {
     let mut enum_definition = Enum::new("Task").derive("Debug").vis("pub").to_owned();
     for task in tasks {
         let variant = generate_variant(&task);
@@ -236,7 +236,7 @@ pub fn generate_task_enum(tasks: &Vec<PluginDescriptor>) -> Enum {
     enum_definition
 }
 
-pub fn generate_task_enum_impl(tasks: &Vec<PluginDescriptor>) -> Impl {
+pub fn generate_task_enum_impl(tasks: &Vec<TaskDescriptor>) -> Impl {
     let mut match_block = Block::new("match &self");
     for task in tasks {
         let snake_name = task.name.to_case(Case::Snake);
@@ -256,7 +256,7 @@ pub fn generate_task_enum_impl(tasks: &Vec<PluginDescriptor>) -> Impl {
     Impl::new("Task").push_fn(run_fn).to_owned()
 }
 
-fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
+fn generate_parse_input_match(tasks: &Vec<TaskDescriptor>) -> Block {
     let mut match_block = Block::new("match task_name");
     for task in tasks {
         let name_snake = task.name.to_case(Case::Snake);
@@ -276,7 +276,7 @@ fn generate_parse_input_match(tasks: &Vec<PluginDescriptor>) -> Block {
         .to_owned()
 }
 
-pub fn generate_parse_input(tasks: &Vec<PluginDescriptor>) -> Function {
+pub fn generate_parse_input(tasks: &Vec<TaskDescriptor>) -> Function {
     let map_block = Block::new("    .map(|task|")
         .line("let task_name = task.name();")
         .push_block(generate_parse_input_match(tasks))
@@ -307,7 +307,7 @@ mod test {
     use regex::Regex;
 
     use crate::command::{
-        generator::generate_parse_task, Command, ElementDescriptor, PluginDescriptor,
+        generator::generate_parse_task, Command, ElementDescriptor, TaskDescriptor,
     };
 
     use super::{
@@ -352,8 +352,8 @@ mod test {
         assert_eq!(normalize(&impl_to_string(item)), normalize(expected))
     }
 
-    fn mock_task(name: &str) -> PluginDescriptor {
-        PluginDescriptor {
+    fn mock_task(name: &str) -> TaskDescriptor {
+        TaskDescriptor {
             name: String::from(name),
             command: Command::Snippet(String::from("asdf")),
             element: ElementDescriptor { attributes: vec![] },

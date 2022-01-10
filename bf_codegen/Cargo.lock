@@ -18,10 +18,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
-name = "codegen"
+name = "bf_codegen"
 version = "0.1.0"
 dependencies = [
- "codegen 0.1.3",
+ "codegen",
  "convert_case",
  "regex",
  "serde",

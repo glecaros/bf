@@ -129,19 +129,19 @@ impl ElementDescriptor {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PluginDescriptor {
+pub struct TaskDescriptor {
     name: String,
     command: Command,
     element: ElementDescriptor,
 }
 
-impl PluginDescriptor {
-    fn from_reader<R: Read>(reader: R) -> Result<PluginDescriptor> {
+impl TaskDescriptor {
+    fn from_reader<R: Read>(reader: R) -> Result<TaskDescriptor> {
         serde_yaml::from_reader(reader).map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
     }
 
-    pub fn load_from_directory(plugin_path: &Path) -> Result<Vec<PluginDescriptor>> {
-        fs::read_dir(plugin_path)?
+    pub fn load_from_directory(tasks_path: &Path) -> Result<Vec<TaskDescriptor>> {
+        fs::read_dir(tasks_path)?
             .map(|entry| entry.map(|e| e.path()))
             .filter_map(|entry| match entry {
                 Ok(entry) => {
@@ -157,7 +157,7 @@ impl PluginDescriptor {
             .map(|path| {
                 let path = path?;
                 let file = File::open(path)?;
-                PluginDescriptor::from_reader(file)
+                TaskDescriptor::from_reader(file)
             })
             .collect()
     }

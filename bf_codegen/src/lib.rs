@@ -7,18 +7,18 @@ use std::{
 };
 
 use codegen::{Module, Scope};
-use command::PluginDescriptor;
+use command::TaskDescriptor;
 
 use crate::command::{generate_parse_input, generate_task_enum, generate_task_enum_impl};
 
-fn load_tasks(base_path: &Path) -> Result<Vec<PluginDescriptor>> {
+fn load_tasks(base_path: &Path) -> Result<Vec<TaskDescriptor>> {
     if !base_path.is_dir() {
         return Err(Error::new(
             ErrorKind::NotFound,
             "Provided path is not a directory",
         ));
     }
-    PluginDescriptor::load_from_directory(base_path)
+    TaskDescriptor::load_from_directory(base_path)
 }
 
 fn validate_and_open_target_file(target_file: &Path) -> Result<File> {
