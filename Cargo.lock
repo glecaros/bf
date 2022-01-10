@@ -41,13 +41,24 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 name = "bf"
 version = "0.1.0"
 dependencies = [
+ "bf_codegen",
  "clap",
- "codegen 0.1.0",
  "env_logger",
  "eval",
  "log",
  "minidom",
  "regex",
+]
+
+[[package]]
+name = "bf_codegen"
+version = "0.1.0"
+dependencies = [
+ "codegen",
+ "convert_case",
+ "regex",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]
@@ -75,17 +86,6 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
-]
-
-[[package]]
-name = "codegen"
-version = "0.1.0"
-dependencies = [
- "codegen 0.1.3",
- "convert_case",
- "regex",
- "serde",
- "serde_yaml",
 ]
 
 [[package]]
