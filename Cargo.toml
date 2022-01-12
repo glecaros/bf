@@ -12,3 +12,6 @@ log = "0.4.14"
 env_logger = "0.9.0"
 eval = "0.4.3"
 regex = "1.5.4"
+
+[build-dependencies]
+bf_codegen = { path = "./bf_codegen" }

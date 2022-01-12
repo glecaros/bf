@@ -1,0 +1,17 @@
+name: strip
+command:
+  command_line:
+    linux: strip [-o $destination ] $source
+    windows: strip.exe [-o $destination ] $source
+    osx: strip [-o &destination ] $source
+element:
+  tag: strip
+  attributes:
+    - name: source
+      type: path
+      allow_group: prefix
+      required: true
+    - name: destination
+      type: path
+      allow_group: inherit_prefix
+      required: false

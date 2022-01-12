@@ -1,4 +1,3 @@
-mod commands;
 mod error;
 mod input;
 mod interpolation;
@@ -14,10 +13,11 @@ use crate::{input::parse_arguments, task::parse_input_file, util::WorkingDirGuar
 fn execute() -> Result<(), Error> {
     let runtime = parse_arguments()?;
     let tasks = parse_input_file(&runtime)?;
+    info!("tasks {:?}", &tasks);
     info!("File parsed successfully, found {} task(s)", tasks.len());
     let _guard = WorkingDirGuard::new(&runtime.working_directory)?;
     for task in &tasks {
-        task.execute(&runtime)?;
+        task.run()?;
     }
     Ok(())
 }
