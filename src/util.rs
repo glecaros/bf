@@ -1,4 +1,4 @@
-use std::{env, path::{Path, PathBuf}};
+use std::{env, path::{Path, PathBuf}, collections::HashMap};
 
 use log::debug;
 use minidom::Element;
@@ -31,17 +31,19 @@ pub const ATTR_CONDITION: &str = "condition";
 
 pub fn interpolate_attribute(name: &str, element: &Element, runtime: &Runtime) -> Result<Option<String>, Error> {
     element.attr(name).map(|v| {
-        interpolate(v, &runtime.variables)
+        let variables = runtime.variables.clone().into_iter().collect();
+        interpolate(v, &variables)
     }).transpose()
 }
 
 pub fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
     use eval::Expr;
+    let variables: HashMap<String, String> = runtime.variables.clone().into_iter().collect();
+    debug!("variables: {:?}", variables);
     if let Some(condition) = condition {
         debug!("Evaluating condition {}", &condition);
-        let expr = &runtime
-            .variables
-            .iter()
+        let expr = &variables
+            .into_iter()
             .fold(Expr::new(condition), |expr, (name, value)| {
                 expr.value(name, value)
             });
@@ -86,7 +88,7 @@ impl ApplyPrefix for Option<PathBuf> {
 
 #[cfg(test)]
 mod test {
-    use std::{path::PathBuf, collections::HashMap};
+    use std::path::PathBuf;
 
     use crate::{runtime::Runtime, util::evaluate_condition};
 
@@ -94,7 +96,7 @@ mod test {
         Runtime {
             input: PathBuf::new(),
             working_directory: PathBuf::new(),
-            variables: HashMap::new(),
+            variables: Vec::new(),
             dry_run: true,
             source_base: None,
             destination_base: None,
@@ -115,7 +117,7 @@ mod test {
         let mut runtime = new_runtime();
         runtime
             .variables
-            .insert(String::from("var"), String::from("value"));
+            .push((String::from("var"), String::from("value")));
         const CONDITION: &str = "var == 'value'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Ok(_)));
@@ -138,7 +140,7 @@ mod test {
         let mut runtime = new_runtime();
         runtime
             .variables
-            .insert(String::from("var"), String::from("wrong"));
+            .push((String::from("var"), String::from("wrong")));
         const CONDITION: &str = "var == 'value'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Ok(_)));
