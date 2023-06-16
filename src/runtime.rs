@@ -1,6 +1,10 @@
 use std::{path::PathBuf, error::Error};
 use clap::Parser;
 
+pub fn parse_from_cli() -> Runtime{
+    Runtime::parse()
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "bf",
