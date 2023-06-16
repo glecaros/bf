@@ -1,17 +1,9 @@
-[package]
-name = "bf"
-version = "0.1.0"
-edition = "2018"
+[workspace]
+members = [
+  "bf_codegen",
+  "bf_lib",
+  "bf_cli",
+  "examples/*",
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-clap = { version = "4.3.4", features = ["derive", "string"] }
-minidom = "0.13.0"
-log = "0.4.14"
-env_logger = "0.9.0"
-eval = "0.4.3"
-regex = "1.5.4"
-
-[build-dependencies]
-bf_codegen = { path = "./bf_codegen" }
+default-members = ["bf_cli", "bf_lib", "bf_codegen"]

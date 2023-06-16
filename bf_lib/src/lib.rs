@@ -1,6 +1,6 @@
 mod error;
 mod interpolation;
-mod runtime;
+pub mod runtime;
 mod task;
 mod util;
 
@@ -9,10 +9,8 @@ use log::{error, info};
 
 use crate::{task::parse_input_file, util::WorkingDirGuard};
 
-fn execute() -> Result<(), Error> {
-    let runtime = runtime::parse_from_cli();
+fn execute(runtime: runtime::Runtime) -> Result<(), Error> {
     info!("runtime: {:?}", &runtime);
-    
     let tasks = parse_input_file(&runtime)?;
     info!("tasks {:?}", &tasks);
     info!("File parsed successfully, found {} task(s)", tasks.len());
@@ -23,7 +21,7 @@ fn execute() -> Result<(), Error> {
     Ok(())
 }
 
-fn main() {
+pub fn run(runtime: runtime::Runtime) {
     const LOG_FILTER_VAR: &str = "BF_LOG_FILTER";
     const LOG_WRITE_STYLE_VAR: &str = "BF_WRITE_STYLE";
     env_logger::Builder::from_env(
@@ -32,7 +30,7 @@ fn main() {
             .write_style(LOG_WRITE_STYLE_VAR),
     )
     .init();
-    match execute() {
+    match execute(runtime) {
         Ok(_) => info!("Execution completed successfully"),
         Err(err) => {
             error!("Execution failed.");

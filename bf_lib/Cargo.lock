@@ -78,11 +78,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "bf_cli"
+name = "bf"
 version = "0.1.0"
 dependencies = [
- "bf_lib",
+ "bf_codegen",
  "clap",
+ "env_logger",
+ "eval",
+ "log",
+ "minidom",
+ "regex",
 ]
 
 [[package]]
@@ -94,19 +99,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_yaml",
-]
-
-[[package]]
-name = "bf_lib"
-version = "0.1.0"
-dependencies = [
- "bf_codegen",
- "clap",
- "env_logger",
- "eval",
- "log",
- "minidom",
- "regex",
 ]
 
 [[package]]
@@ -183,13 +175,6 @@ name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
-
-[[package]]
-name = "copy"
-version = "0.0.0"
-dependencies = [
- "bf_lib",
-]
 
 [[package]]
 name = "env_logger"
@@ -464,13 +449,6 @@ dependencies = [
  "ryu",
  "serde",
  "yaml-rust",
-]
-
-[[package]]
-name = "strip"
-version = "0.0.0"
-dependencies = [
- "bf_lib",
 ]
 
 [[package]]
