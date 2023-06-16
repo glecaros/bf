@@ -1,5 +1,4 @@
 mod error;
-mod input;
 mod interpolation;
 mod runtime;
 mod task;
@@ -11,7 +10,7 @@ use log::{error, info};
 use crate::{input::parse_arguments, task::parse_input_file, util::WorkingDirGuard};
 
 fn execute() -> Result<(), Error> {
-    let runtime = parse_arguments()?;
+    let runtime = runtime::Runtime::parse();
     let tasks = parse_input_file(&runtime)?;
     info!("tasks {:?}", &tasks);
     info!("File parsed successfully, found {} task(s)", tasks.len());
