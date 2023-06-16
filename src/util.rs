@@ -39,7 +39,7 @@ pub fn interpolate_attribute(name: &str, element: &Element, runtime: &Runtime) -
 pub fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
     use eval::Expr;
     let variables: HashMap<String, String> = runtime.variables.clone().into_iter().collect();
-    println!("variables: {:?}", variables);
+    debug!("variables: {:?}", variables);
     if let Some(condition) = condition {
         debug!("Evaluating condition {}", &condition);
         let expr = &variables
