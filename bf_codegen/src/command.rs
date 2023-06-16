@@ -7,7 +7,14 @@ use std::{
 use codegen::Module;
 use serde::{de::Visitor, Deserialize, Deserializer};
 
-use crate::{command_parser::CommandDetails, generator::{generate_group_definition, generate_group_impl, generate_item_definition, generate_item_impl, generate_task_struct, generate_parse_task, generate_parse_items, generate_parse_item, generate_task_impl, generate_execute_fn}};
+use crate::{
+    command_parser::CommandDetails,
+    generator::{
+        generate_execute_fn, generate_group_definition, generate_group_impl,
+        generate_item_definition, generate_item_impl, generate_parse_item, generate_parse_items,
+        generate_parse_task, generate_task_impl, generate_task_struct,
+    },
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
