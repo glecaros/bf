@@ -44,6 +44,19 @@ pub struct Runtime {
     pub destination_base: Option<PathBuf>,
 }
 
+impl Default for Runtime {
+    fn default() -> Self {
+        Runtime {
+            input: PathBuf::new(),
+            working_directory: PathBuf::new(),
+            variables: Vec::new(),
+            dry_run: true,
+            source_base: None,
+            destination_base: None,
+        }
+    }
+}
+
 // https://github.com/clap-rs/clap/discussions/4291#discussioncomment-3764804
 fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
 where
