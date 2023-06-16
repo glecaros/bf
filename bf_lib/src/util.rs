@@ -107,24 +107,11 @@ impl ApplyPrefix for Option<PathBuf> {
 
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-
     use crate::{runtime::Runtime, util::evaluate_condition};
-
-    fn new_runtime() -> Runtime {
-        Runtime {
-            input: PathBuf::new(),
-            working_directory: PathBuf::new(),
-            variables: Vec::new(),
-            dry_run: true,
-            source_base: None,
-            destination_base: None,
-        }
-    }
 
     #[test]
     fn evaluate_condition_no_condition() {
-        let runtime = new_runtime();
+        let runtime = Runtime::default();
         let result = evaluate_condition(None, &runtime);
         assert!(matches!(result, Ok(_)));
         let result = result.unwrap();
@@ -133,7 +120,7 @@ mod test {
 
     #[test]
     fn evaluate_condition_test_single_variable_present() {
-        let mut runtime = new_runtime();
+        let mut runtime = Runtime::default();
         runtime
             .variables
             .push((String::from("var"), String::from("value")));
@@ -146,7 +133,7 @@ mod test {
 
     #[test]
     fn evaluate_condition_test_single_variable_not_present() {
-        let runtime = new_runtime();
+        let runtime = Runtime::default();
         const CONDITION: &str = "var == 'value'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Ok(_)));
@@ -156,7 +143,7 @@ mod test {
 
     #[test]
     fn evaluate_condition_test_single_variable_wrong() {
-        let mut runtime = new_runtime();
+        let mut runtime = Runtime::default();
         runtime
             .variables
             .push((String::from("var"), String::from("wrong")));
@@ -169,7 +156,7 @@ mod test {
 
     #[test]
     fn evaluate_condition_test_not_bool() {
-        let runtime = new_runtime();
+        let runtime = Runtime::default();
         const CONDITION: &str = "3 + 1'";
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Err(_)));
