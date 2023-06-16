@@ -1,7 +1,7 @@
 mod runtime;
 
-use runtime::{Runtime, parse_from_cli};
 use bf_lib::runtime::Runtime as LibRuntime;
+use runtime::{parse_from_cli, Runtime};
 
 pub fn main() {
     let runtime = parse_from_cli();
