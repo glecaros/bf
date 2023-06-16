@@ -101,7 +101,6 @@ name = "bf_lib"
 version = "0.1.0"
 dependencies = [
  "bf_codegen",
- "clap",
  "env_logger",
  "eval",
  "log",
