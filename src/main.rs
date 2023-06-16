@@ -11,6 +11,8 @@ use crate::{task::parse_input_file, util::WorkingDirGuard};
 
 fn execute() -> Result<(), Error> {
     let runtime = runtime::parse_from_cli();
+    info!("runtime: {:?}", &runtime);
+    
     let tasks = parse_input_file(&runtime)?;
     info!("tasks {:?}", &tasks);
     info!("File parsed successfully, found {} task(s)", tasks.len());

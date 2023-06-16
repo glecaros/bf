@@ -16,17 +16,20 @@ pub fn parse_from_cli() -> Runtime {
 pub struct Runtime {
     #[arg(
         short='i',
-        long="input",
+        long,
         value_hint = clap::ValueHint::DirPath)]
     pub input: PathBuf,
 
     #[arg(
         short='w',
+        long,
+        default_value = ".",
         value_hint = clap::ValueHint::DirPath)]
     pub working_directory: PathBuf,
 
     #[arg(
         short='v',
+        long,
         value_delimiter=',',
         value_parser = parse_key_val::<String, String>,)]
     pub variables: Vec<(String, String)>,
@@ -36,11 +39,13 @@ pub struct Runtime {
 
     #[arg(
         short='I',
+        long,
         value_hint = clap::ValueHint::DirPath)]
     pub source_base: Option<PathBuf>,
 
     #[arg(
         short='D',
+        long,
         value_hint = clap::ValueHint::DirPath)]
     pub destination_base: Option<PathBuf>,
 }
