@@ -16,6 +16,7 @@ pub fn parse_from_cli() -> Runtime {
 pub struct Runtime {
     #[arg(
         short='i',
+        long="input",
         value_hint = clap::ValueHint::DirPath)]
     pub input: PathBuf,
 
