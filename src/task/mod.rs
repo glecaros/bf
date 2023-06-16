@@ -1,8 +1,5 @@
-
-use std::{fs::File, io::Read};
-
-use log::{debug, info};
 use minidom::Element;
+use std::{fs::File, io::Read};
 
 use crate::{error::Error, runtime::Runtime, util::WorkingDirGuard};
 

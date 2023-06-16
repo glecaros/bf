@@ -18,25 +18,31 @@ pub struct CommandDetails {
 impl CommandDetails {
     pub fn new(command: &str) -> Result<CommandDetails> {
         let (command, arguments) = command
-            .split_once(" ").ok_or_else(invalid!("Malformed command definition"))?;
+            .split_once(" ")
+            .ok_or_else(invalid!("Malformed command definition"))?;
         let mut arguments = arguments.trim();
         let mut parts = Vec::new();
         while !arguments.is_empty() {
             if arguments.starts_with("[") {
-                let index = arguments.find("]").ok_or_else(invalid!("Invalid command definition (mismatched '[')"))?;
+                let index = arguments
+                    .find("]")
+                    .ok_or_else(invalid!("Invalid command definition (mismatched '[')"))?;
                 let part = &arguments[1..index];
                 let tokens: Vec<String> = part.trim().split(" ").map(String::from).collect();
-                let dependencies: Vec<String> = tokens.iter().filter_map(|token| {
-                    if token.starts_with("$") {
-                        Some(String::from(&token[1..]))
-                    } else {
-                        None
-                    }
-                }).collect();
+                let dependencies: Vec<String> = tokens
+                    .iter()
+                    .filter_map(|token| {
+                        if token.starts_with("$") {
+                            Some(String::from(&token[1..]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 parts.push(CommandPart {
                     tokens: tokens,
                     dependencies: dependencies,
-                    optional: true
+                    optional: true,
                 });
                 arguments = &arguments[index + 1..];
             } else {
@@ -47,17 +53,20 @@ impl CommandDetails {
                     arguments
                 };
                 let tokens: Vec<String> = part.trim().split(" ").map(String::from).collect();
-                let dependencies: Vec<String> = tokens.iter().filter_map(|token| {
-                    if token.starts_with("$") {
-                        Some(String::from(&token[1..]))
-                    } else {
-                        None
-                    }
-                }).collect();
+                let dependencies: Vec<String> = tokens
+                    .iter()
+                    .filter_map(|token| {
+                        if token.starts_with("$") {
+                            Some(String::from(&token[1..]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 parts.push(CommandPart {
                     tokens: tokens,
                     dependencies: dependencies,
-                    optional: false
+                    optional: false,
                 });
                 arguments = if let Some(index) = index {
                     &arguments[index..]
@@ -66,12 +75,11 @@ impl CommandDetails {
                 }
             }
         }
-        Ok(CommandDetails{
+        Ok(CommandDetails {
             command_name: String::from(command),
-            parts: parts
+            parts: parts,
         })
     }
-
 }
 
 #[cfg(test)]

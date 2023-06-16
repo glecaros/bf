@@ -1,9 +1,13 @@
-use std::{env, path::{Path, PathBuf}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+};
 
 use log::debug;
 use minidom::Element;
 
-use crate::{error::Error, interpolation::interpolate, runtime::Runtime, internal_error};
+use crate::{error::Error, internal_error, interpolation::interpolate, runtime::Runtime};
 
 pub struct WorkingDirGuard {
     original_dir: PathBuf,
@@ -16,24 +20,36 @@ impl WorkingDirGuard {
         debug!("  from: {}", current_dir.to_string_lossy());
         debug!("  to:   {}", dir.to_string_lossy());
         env::set_current_dir(dir)?;
-        Ok(WorkingDirGuard{ original_dir: current_dir })
+        Ok(WorkingDirGuard {
+            original_dir: current_dir,
+        })
     }
 }
 
 impl Drop for WorkingDirGuard {
     fn drop(&mut self) {
-        debug!("Restoring working directory to {}", self.original_dir.to_string_lossy());
+        debug!(
+            "Restoring working directory to {}",
+            self.original_dir.to_string_lossy()
+        );
         env::set_current_dir(&self.original_dir).unwrap();
     }
 }
 
 pub const ATTR_CONDITION: &str = "condition";
 
-pub fn interpolate_attribute(name: &str, element: &Element, runtime: &Runtime) -> Result<Option<String>, Error> {
-    element.attr(name).map(|v| {
-        let variables = runtime.variables.clone().into_iter().collect();
-        interpolate(v, &variables)
-    }).transpose()
+pub fn interpolate_attribute(
+    name: &str,
+    element: &Element,
+    runtime: &Runtime,
+) -> Result<Option<String>, Error> {
+    element
+        .attr(name)
+        .map(|v| {
+            let variables = runtime.variables.clone().into_iter().collect();
+            interpolate(v, &variables)
+        })
+        .transpose()
 }
 
 pub fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<bool, Error> {
@@ -58,7 +74,10 @@ pub fn evaluate_condition(condition: Option<&str>, runtime: &Runtime) -> Result<
     }
 }
 
-pub fn evaluate_condition_from_element(runtime: &Runtime, element: &Element) -> Result<bool, Error> {
+pub fn evaluate_condition_from_element(
+    runtime: &Runtime,
+    element: &Element,
+) -> Result<bool, Error> {
     let condition = element.attr(ATTR_CONDITION);
     evaluate_condition(condition, runtime)
 }
@@ -155,5 +174,4 @@ mod test {
         let result = evaluate_condition(Some(CONDITION), &runtime);
         assert!(matches!(result, Err(_)));
     }
-
 }

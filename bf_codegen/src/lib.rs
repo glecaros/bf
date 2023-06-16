@@ -1,6 +1,6 @@
 mod command;
-mod generator;
 mod command_parser;
+mod generator;
 
 use std::{
     fs::File,
@@ -11,7 +11,7 @@ use std::{
 use codegen::{Module, Scope};
 use command::TaskDescriptor;
 
-use crate::generator::{generate_task_enum, generate_task_enum_impl, generate_parse_input};
+use crate::generator::{generate_parse_input, generate_task_enum, generate_task_enum_impl};
 
 fn load_tasks(base_path: &Path) -> Result<Vec<TaskDescriptor>> {
     if !base_path.is_dir() {

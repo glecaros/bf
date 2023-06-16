@@ -1,7 +1,7 @@
-use std::{path::PathBuf, error::Error};
 use clap::Parser;
+use std::{error::Error, path::PathBuf};
 
-pub fn parse_from_cli() -> Runtime{
+pub fn parse_from_cli() -> Runtime {
     Runtime::parse()
 }
 
@@ -30,10 +30,7 @@ pub struct Runtime {
         value_parser = parse_key_val::<String, String>,)]
     pub variables: Vec<(String, String)>,
 
-    #[arg(
-        short='d',
-        long="dry",
-        default_value="false")]
+    #[arg(short = 'd', long = "dry", default_value = "false")]
     pub dry_run: bool,
 
     #[arg(
@@ -45,8 +42,6 @@ pub struct Runtime {
         short='D',
         value_hint = clap::ValueHint::DirPath)]
     pub destination_base: Option<PathBuf>,
-
-
 }
 
 // https://github.com/clap-rs/clap/discussions/4291#discussioncomment-3764804
