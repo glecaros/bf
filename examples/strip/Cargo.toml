@@ -1,8 +1,0 @@
-[package]
-name = "strip"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-bf_lib = { path = "../../bf_lib" }
