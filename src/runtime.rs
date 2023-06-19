@@ -63,3 +63,16 @@ where
         .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Runtime {
+            input: PathBuf::new(),
+            working_directory: PathBuf::new(),
+            variables: Vec::new(),
+            dry_run: false,
+            source_base: None,
+            destination_base: None,
+        }
+    }
+}

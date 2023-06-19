@@ -1,8 +1,0 @@
-[package]
-name = "bf"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-clap = { version = "4.3.4", features = ["derive", "string"] }
-bf_lib = { path = "../bf_lib" }

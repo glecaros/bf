@@ -9,7 +9,8 @@ use log::{error, info};
 
 use crate::{task::parse_input_file, util::WorkingDirGuard};
 
-fn execute(runtime: runtime::Runtime) -> Result<(), Error> {
+fn execute() -> Result<(), Error> {
+    let runtime = runtime::parse_from_cli();
     info!("runtime: {:?}", &runtime);
     let tasks = parse_input_file(&runtime)?;
     info!("tasks {:?}", &tasks);
@@ -21,7 +22,7 @@ fn execute(runtime: runtime::Runtime) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn run(runtime: runtime::Runtime) {
+pub fn main() {
     const LOG_FILTER_VAR: &str = "BF_LOG_FILTER";
     const LOG_WRITE_STYLE_VAR: &str = "BF_WRITE_STYLE";
     env_logger::Builder::from_env(
@@ -30,7 +31,7 @@ pub fn run(runtime: runtime::Runtime) {
             .write_style(LOG_WRITE_STYLE_VAR),
     )
     .init();
-    match execute(runtime) {
+    match execute() {
         Ok(_) => info!("Execution completed successfully"),
         Err(err) => {
             error!("Execution failed.");

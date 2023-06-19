@@ -5,7 +5,7 @@ use std::{
 };
 
 fn run() -> Result<()> {
-    const PATH: &str = "../tasks/";
+    const PATH: &str = "./tasks/";
     const TARGET_FILE: &str = "commands.rs";
     println!("cargo:rerun-if-changed=tasks/");
     let out_file = env::var_os("OUT_DIR")
