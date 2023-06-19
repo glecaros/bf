@@ -162,7 +162,7 @@ fn generate_command_line_execute(
     } else if cfg!(target_os = "linux") {
         &descriptor.linux
     } else if cfg!(target_os = "macos") {
-        &descriptor.osx
+        &descriptor.macos
     } else {
         panic!("Unsupported OS")
     };
@@ -171,9 +171,11 @@ fn generate_command_line_execute(
         "let mut call = Command::new(\"{}\");",
         &command.command_name
     ));
+
     for part in &command.parts {
         add_command_part_handling(&mut function, part);
     }
+
     function
         .line("let output = call.output()?;")
         .line("let status = output.status;")

@@ -89,7 +89,7 @@ pub struct CommandLineDescriptor {
     #[serde(deserialize_with = "parse_command")]
     pub windows: CommandDetails,
     #[serde(deserialize_with = "parse_command")]
-    pub osx: CommandDetails,
+    pub macos: CommandDetails,
 }
 
 #[derive(Debug, Deserialize)]

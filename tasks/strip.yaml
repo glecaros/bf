@@ -3,7 +3,7 @@ command:
   command_line:
     linux: strip [-o $destination ] $source
     windows: strip.exe [-o $destination ] $source
-    osx: strip [-o &destination ] $source
+    macos: strip [-o $destination ] $source
 element:
   tag: strip
   attributes:
