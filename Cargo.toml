@@ -2,8 +2,7 @@
 members = [
   "bf_codegen",
   "bf_lib",
-  "bf_cli",
-  "examples/*",
+  "bf",
 ]
 
-default-members = ["bf_cli", "bf_lib", "bf_codegen"]
+default-members = ["bf", "bf_lib", "bf_codegen"]
