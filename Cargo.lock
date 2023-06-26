@@ -88,6 +88,8 @@ dependencies = [
  "log",
  "minidom",
  "regex",
+ "serde",
+ "serde_yaml 0.9.21",
 ]
 
 [[package]]
@@ -98,7 +100,7 @@ dependencies = [
  "convert_case",
  "regex",
  "serde",
- "serde_yaml",
+ "serde_yaml 0.8.26",
 ]
 
 [[package]]
@@ -452,6 +454,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9d684e3ec7de3bf5466b32bd75303ac16f0736426e5a4e0d6e489559ce1249c"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -482,6 +497,12 @@ name = "unicode-ident"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15811caf2415fb889178633e7724bad2509101cde276048e013b9def5e51fa0"
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1865806a559042e51ab5414598446a5871b561d21b6764f2eabb0dd481d880a6"
 
 [[package]]
 name = "utf8parse"

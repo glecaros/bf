@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tasks xmlns="https://github.com/glecaros/bf">
+  <copy>
+    <group source="input" destination="output">
+      <group destination="first">
+        <item source="a.txt" >a.txt</item>
+        <item source="b/b.txt">b/b.txt</item>
+      </group>
+    </group>
+  </copy>
+</tasks>
