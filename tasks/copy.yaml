@@ -2,10 +2,15 @@ name: copy
 command:
   snippet: |
     let directory = ${destination}.parent();
+    println!("Creating directory: {:?}", directory);
     if let Some(directory) = directory {
+      println!("Creating directory: {:?}", directory);
       std::fs::create_dir_all(directory)?;
+      std::fs::create_dir_all(${destination})?;
     }
-    std::fs::copy(${source}, ${destination})?;
+    let file_name = ${source}.file_name().unwrap();
+    println!("Copying file: {:?} to {:?}", ${source}, ${destination});
+    std::fs::copy(${source}, ${destination}.join(file_name)).expect("copy failure");
     Ok(())
 element:
   tag: copy

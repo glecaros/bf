@@ -23,7 +23,9 @@ pub struct Runtime {
     #[arg(
         short='w',
         long,
-        default_value = ".",
+        default_value = std::env::current_dir()
+            .expect("Couldn't get current directory")
+            .into_os_string(),
         value_hint = clap::ValueHint::DirPath)]
     pub working_directory: PathBuf,
 
