@@ -8,7 +8,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let contents = std::fs::read_to_string("examples/tasks.yaml")?;
     println!("File contents: \n{}", contents);
 
-    let yaml_string = serde_yaml::from_reader(yaml_file)?;
+    let yaml_string = serde_yaml::from_reader::<BTreeMap>(yaml_file)?;
     println!("Read YAML string: {:#?}", yaml_string);
     Ok(())
 }
