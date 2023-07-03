@@ -1,0 +1,9 @@
+tasks:
+  copy:
+    - source: input
+    - destination: output
+    - items:
+        - source: a.txt
+          destination: first/a.txt
+        - source: b/b.txt
+          destination: first/b/b.txt
